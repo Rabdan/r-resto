@@ -4,6 +4,44 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<meta name="text-scale" content="scale" />
+		<script>
+			(function () {
+				try {
+					var KEY = 'r_resto_device_id';
+					var MAX_AGE = 60 * 60 * 24 * 365 * 5;
+					function genUuid() {
+						try {
+							if (window.crypto && typeof crypto.randomUUID === 'function') {
+								return crypto.randomUUID();
+							}
+						} catch (e) {}
+						return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+							var r = (Math.random() * 16) | 0;
+							var v = c === 'x' ? r : (r & 0x3) | 0x8;
+							return v.toString(16);
+						});
+					}
+					function getCookie(name) {
+						var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+						return m ? decodeURIComponent(m[1]) : null;
+					}
+					var id = null;
+					try {
+						id = localStorage.getItem(KEY);
+					} catch (e) {}
+					if (!id) {
+						id = getCookie('device_uuid') || genUuid();
+						try {
+							localStorage.setItem(KEY, id);
+						} catch (e) {}
+					}
+					if (getCookie('device_uuid') !== id) {
+						document.cookie =
+							'device_uuid=' + encodeURIComponent(id) + '; path=/; max-age=' + MAX_AGE + '; SameSite=Lax';
+					}
+				} catch (e) {}
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

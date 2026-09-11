@@ -8,7 +8,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		uuid = crypto.randomUUID();
 		event.cookies.set('device_uuid', uuid, {
 			path: '/',
-			httpOnly: true,
+			httpOnly: false,
 			sameSite: 'lax',
 			maxAge: 60 * 60 * 24 * 365 * 5
 		});
