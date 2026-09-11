@@ -8,6 +8,7 @@
 			(function () {
 				try {
 					var KEY = 'r_resto_device_id';
+					var CODE_KEY = 'r_resto_device_code';
 					var MAX_AGE = 60 * 60 * 24 * 365 * 5;
 					function genUuid() {
 						try {
@@ -20,6 +21,10 @@
 							var v = c === 'x' ? r : (r & 0x3) | 0x8;
 							return v.toString(16);
 						});
+					}
+					function genCode() {
+						var n = String(Math.floor(100000 + Math.random() * 900000));
+						return n.slice(0, 3) + '-' + n.slice(3);
 					}
 					function getCookie(name) {
 						var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
@@ -39,6 +44,11 @@
 						document.cookie =
 							'device_uuid=' + encodeURIComponent(id) + '; path=/; max-age=' + MAX_AGE + '; SameSite=Lax';
 					}
+					try {
+						if (!localStorage.getItem(CODE_KEY)) {
+							localStorage.setItem(CODE_KEY, genCode());
+						}
+					} catch (e) {}
 				} catch (e) {}
 			})();
 		</script>

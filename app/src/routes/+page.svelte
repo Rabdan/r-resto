@@ -9,7 +9,17 @@
 	let source: EventSource | undefined;
 
 	async function refresh() {
-		const res = await fetch('/api/devices/register', { method: 'POST' });
+		let deviceCode = '';
+		try {
+			deviceCode = localStorage.getItem('r_resto_device_code') ?? '';
+		} catch {
+			/* ignore */
+		}
+		const res = await fetch('/api/devices/register', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ deviceCode })
+		});
 		if (!res.ok) {
 			error = 'Не удалось зарегистрировать устройство';
 			return;
