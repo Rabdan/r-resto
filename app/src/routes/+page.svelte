@@ -50,7 +50,7 @@
 		{#if error}
 			<p class="mt-4 text-rose-600">{error}</p>
 		{:else if device && device.status !== 'active'}
-			<p class="mt-6 font-mono text-5xl font-semibold tracking-[0.18em] text-emerald-600">
+			<p class="mt-6 font-mono text-4xl font-semibold tracking-[0.18em] text-emerald-600">
 				{device.deviceCode}
 			</p>
 			<p class="mt-4 text-slate-700">Покажи этот код администратору</p>
