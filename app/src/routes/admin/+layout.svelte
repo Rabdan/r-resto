@@ -1,32 +1,33 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import AdminNav from '$lib/components/AdminNav.svelte';
 
 	let { children } = $props();
 
+	type AuthState = 'checking' | 'allowed' | 'denied';
+
 	const isLogin = $derived(page.url.pathname === '/admin');
-	let allowed = $state(false);
+	let authState: AuthState = $state('checking');
 	let adminName = $state('');
 
 	$effect(() => {
 		const path = page.url.pathname;
 		if (path === '/admin') {
-			allowed = false;
+			authState = 'checking';
 			return;
 		}
 
 		let cancelled = false;
-		allowed = false;
+		authState = 'checking';
 		void fetch('/api/admin/me').then(async (res) => {
 			if (cancelled) return;
 			if (!res.ok) {
-				await goto('/admin');
+				authState = 'denied';
 				return;
 			}
 			const data = await res.json();
 			adminName = data.admin?.name ?? '';
-			allowed = true;
+			authState = 'allowed';
 		});
 
 		return () => {
@@ -36,13 +37,13 @@
 
 	async function logout() {
 		await fetch('/api/admin/logout', { method: 'POST' });
-		await goto('/admin');
+		window.location.href = '/admin';
 	}
 </script>
 
 {#if isLogin}
 	{@render children()}
-{:else if allowed}
+{:else if authState === 'allowed'}
 	<div class="min-h-dvh pb-[60px]">
 		<div class="flex items-center justify-between bg-slate-50 px-4 py-2">
 			<p class="text-sm text-slate-700">{adminName}</p>
@@ -51,4 +52,17 @@
 		{@render children()}
 		<AdminNav />
 	</div>
+{:else if authState === 'denied'}
+	<div class="flex min-h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
+		<p class="text-slate-600">Сессия истекла или нет доступа</p>
+		<button
+			type="button"
+			onclick={() => (window.location.href = '/admin')}
+			class="h-12 rounded-md bg-emerald-600 px-6 font-semibold text-white"
+		>
+			Войти
+		</button>
+	</div>
+{:else}
+	<div class="flex min-h-dvh items-center justify-center text-slate-500">Проверка сессии…</div>
 {/if}

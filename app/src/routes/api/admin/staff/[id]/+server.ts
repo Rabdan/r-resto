@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { requireAdmin, resolveAdminPinHash } from '$lib/server/admin';
+import { pinIsTaken, requireAdmin, resolveAdminPinHash } from '$lib/server/admin';
 import type { RequestHandler } from './$types';
 
 export const PUT: RequestHandler = async ({ request, locals, params }) => {
@@ -25,6 +25,9 @@ export const PUT: RequestHandler = async ({ request, locals, params }) => {
 	if (body.pin !== undefined && target.is_superadmin !== 1) {
 		const resolved = resolveAdminPinHash(body.pin);
 		if (resolved.error) return json({ error: resolved.error }, { status: 400 });
+		if (resolved.hash && pinIsTaken((body.pin ?? '').trim(), userId)) {
+			return json({ error: 'Такой пароль уже используется. Введите новый PIN' }, { status: 409 });
+		}
 		pinUpdate = { role: resolved.hash ? 'admin' : 'staff', hash: resolved.hash };
 	}
 

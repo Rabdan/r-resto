@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { requireAdmin, resolveAdminPinHash } from '$lib/server/admin';
+import { pinIsTaken, requireAdmin, resolveAdminPinHash } from '$lib/server/admin';
 import type { RequestHandler } from './$types';
 
 function locationIdFor(admin: App.Locals['admin']): number | null {
@@ -56,6 +56,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const resolved = resolveAdminPinHash(body.pin);
 		if (resolved.error) return json({ error: resolved.error }, { status: 400 });
 		if (resolved.hash) {
+			if (pinIsTaken((body.pin ?? '').trim())) {
+				return json({ error: 'Такой пароль уже используется. Введите новый PIN' }, { status: 409 });
+			}
 			role = 'admin';
 			pinHash = resolved.hash;
 		}

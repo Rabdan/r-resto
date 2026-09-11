@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import {
-	authenticateAdmin,
+	authenticateAdminByPin,
 	createAdminSession,
 	listLoginAdmins,
 	setAdminCookie
@@ -12,14 +12,13 @@ export const GET: RequestHandler = async () => {
 };
 
 export const POST: RequestHandler = async (event) => {
-	const body = (await event.request.json().catch(() => ({}))) as { userId?: number; pin?: string };
-	const userId = Number(body.userId);
+	const body = (await event.request.json().catch(() => ({}))) as { pin?: string };
 	const pin = String(body.pin ?? '');
-	if (!userId || !pin) {
+	if (!pin) {
 		return json({ error: 'invalid' }, { status: 400 });
 	}
 
-	const admin = authenticateAdmin(userId, pin);
+	const admin = authenticateAdminByPin(pin);
 	if (!admin) {
 		return json({ error: 'invalid_pin' }, { status: 401 });
 	}

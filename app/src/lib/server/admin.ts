@@ -62,27 +62,44 @@ export function listLoginAdmins(): Array<{ id: number; name: string }> {
 		.all() as Array<{ id: number; name: string }>;
 }
 
-export function authenticateAdmin(userId: number, pin: string): AdminSession | null {
+export function authenticateAdminByPin(pin: string): AdminSession | null {
 	if (!isValidPin(pin)) return null;
-	const row = getDb()
+	const rows = getDb()
 		.prepare(
 			`SELECT id, name, pin_hash, is_superadmin FROM users
-			 WHERE id = ? AND role = 'admin' AND is_active = 1 AND is_blocked = 0`
+			 WHERE role = 'admin' AND is_active = 1 AND is_blocked = 0`
 		)
-		.get(userId) as
-		| { id: number; name: string; pin_hash: string | null; is_superadmin: number }
-		| undefined;
-	if (!row?.pin_hash) return null;
-	if (!verifyPin(pin, row.pin_hash)) return null;
-	const location = getDb()
-		.prepare(`SELECT location_id FROM user_locations WHERE user_id = ? LIMIT 1`)
-		.get(userId) as { location_id: number } | undefined;
-	return {
-		id: row.id,
-		name: row.name,
-		isSuperadmin: row.is_superadmin === 1,
-		locationId: location?.location_id ?? null
-	};
+		.all() as Array<{ id: number; name: string; pin_hash: string | null; is_superadmin: number }>;
+
+	for (const row of rows) {
+		if (!row.pin_hash) continue;
+		if (!verifyPin(pin, row.pin_hash)) continue;
+		const location = getDb()
+			.prepare(`SELECT location_id FROM user_locations WHERE user_id = ? LIMIT 1`)
+			.get(row.id) as { location_id: number } | undefined;
+		return {
+			id: row.id,
+			name: row.name,
+			isSuperadmin: row.is_superadmin === 1,
+			locationId: location?.location_id ?? null
+		};
+	}
+	return null;
+}
+
+export function pinIsTaken(pin: string, excludeUserId?: number): boolean {
+	if (!isValidPin(pin)) return false;
+	const rows = getDb()
+		.prepare(
+			`SELECT id, pin_hash FROM users
+			 WHERE role = 'admin' AND pin_hash IS NOT NULL AND pin_hash != ''`
+		)
+		.all() as Array<{ id: number; pin_hash: string }>;
+	for (const row of rows) {
+		if (row.id === excludeUserId) continue;
+		if (verifyPin(pin, row.pin_hash)) return true;
+	}
+	return false;
 }
 
 export function setAdminCookie(event: RequestEvent, token: string): void {
@@ -90,6 +107,8 @@ export function setAdminCookie(event: RequestEvent, token: string): void {
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',
+		secure: false,
+		priority: 'high',
 		maxAge: SESSION_HOURS * 60 * 60
 	});
 }

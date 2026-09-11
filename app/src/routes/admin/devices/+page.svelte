@@ -341,22 +341,6 @@
 					Имя
 					<input bind:value={editName} class="mt-1 h-12 w-full rounded-md bg-white px-3" />
 				</label>
-
-				{#if selected.is_superadmin !== 1}
-					<label class="block text-sm text-slate-700">
-						Пароль админки
-						<input
-							bind:value={editPin}
-							type="password"
-							inputmode="numeric"
-							maxlength="8"
-							autocomplete="new-password"
-							class="mt-1 h-12 w-full rounded-md bg-white px-3"
-							placeholder={selected.has_pin ? 'задан · введи новый, чтобы сменить' : 'не задан'}
-						/>
-					</label>
-					<p class="text-xs text-amber-700">{PIN_WARNING}</p>
-				{/if}
 			</div>
 
 			{#if selected.is_active === 1}
@@ -404,14 +388,27 @@
 							void bind();
 						}}
 					>
-						<label class="block text-sm text-slate-700">
+						<label for="bind-code-input" class="block text-sm text-slate-700">
 							Код устройства
+						</label>
+						<div class="flex gap-2">
 							<input
+								id="bind-code-input"
 								bind:value={bindCode}
-								class="mt-1 h-12 w-full rounded-md bg-slate-100 px-3 font-mono tracking-widest"
+								class="h-12 min-w-0 flex-1 rounded-md bg-slate-100 px-3 font-mono tracking-widest"
 								placeholder="481-902"
 							/>
-						</label>
+							<button
+								type="submit"
+								disabled={!bindCode.trim()}
+								class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white disabled:opacity-40"
+								aria-label="Привязать"
+							>
+								<svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2.5">
+									<path d="M12 5v14M5 12h14" />
+								</svg>
+							</button>
+						</div>
 						<div class="grid grid-cols-2 gap-2">
 							<button
 								type="button"
@@ -432,10 +429,26 @@
 								Кухня
 							</button>
 						</div>
-						<button class="h-12 w-full rounded-md bg-emerald-600 font-semibold text-white">Привязать</button>
 					</form>
 				</div>
 			{/if}
+			<div class="mt-3 space-y-3">
+				{#if selected.is_superadmin !== 1}
+					<label class="block text-sm text-slate-700">
+						Пароль админки
+						<input
+							bind:value={editPin}
+							type="password"
+							inputmode="numeric"
+							maxlength="8"
+							autocomplete="new-password"
+							class="mt-1 h-12 w-full rounded-md bg-white px-3"
+							placeholder={selected.has_pin ? 'задан · введи новый, чтобы сменить' : 'не задан'}
+						/>
+					</label>
+					<p class="text-xs text-amber-700">{PIN_WARNING}</p>
+				{/if}
+			</div>
 
 			<div class="mt-4 space-y-2 border-t border-slate-200 pt-3">
 				<button class="h-12 w-full rounded-md bg-slate-800 font-semibold text-white" onclick={() => saveStaff()}>
