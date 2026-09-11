@@ -1,0 +1,25 @@
+@import 'tailwindcss';
+
+html,
+body {
+	min-height: 100%;
+	background: #f1f5f9;
+	color: #0f172a;
+}
+
+body {
+	font-family:
+		ui-sans-serif,
+		system-ui,
+		-apple-system,
+		'Segoe UI',
+		sans-serif;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+	touch-action: manipulation;
+}
