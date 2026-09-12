@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { expensesTotalForShift, listExpensesForShift, type ShiftExpense } from './expenses';
 
 export type HallAgg = { name: string; cents: number };
 export type WaiterAgg = { name: string; cents: number };
@@ -15,6 +16,38 @@ export type ZReport = {
 	created_at: string;
 };
 
+export type ShiftItem = { title: string; quantity: number; price_cents: number; status: string };
+export type ShiftGuest = { name: string; is_paid: number };
+
+export type OpenPrecheck = {
+	id: number;
+	created_at: string;
+	waiter_name: string;
+	hall_name: string;
+	total_cents: number;
+	items: ShiftItem[];
+	guests: ShiftGuest[];
+};
+
+export type ClosedPrecheck = {
+	id: number;
+	created_at: string;
+	closed_at: string | null;
+	waiter_name: string;
+	hall_name: string;
+	total_cents: number;
+};
+
+export type CancelledPrecheck = {
+	id: number;
+	created_at: string;
+	cancelled_at: string | null;
+	cancel_reason: string | null;
+	waiter_name: string;
+	cancelled_by: string | null;
+	total_cents: number;
+};
+
 export type ShiftRow = {
 	id: number;
 	opened_at: string;
@@ -23,13 +56,23 @@ export type ShiftRow = {
 	opened_by: string | null;
 	closed_by: string | null;
 	z: ZReport | null;
+	orders_count: number;
+	cash_cents: number;
+	cashless_cents: number;
+	revenue_cents: number;
+	expenses_cents: number;
+	net_cents: number;
+	expenses: ShiftExpense[];
+	open: OpenPrecheck[];
+	closed_prechecks: ClosedPrecheck[];
+	cancelled: CancelledPrecheck[];
 };
 
-function buildZReport(
+function shiftPayments(
 	db: Database.Database,
 	shiftId: number
-): Omit<ZReport, 'id' | 'shift_id' | 'created_at'> {
-	const payments = db
+): { cash_cents: number; cashless_cents: number } {
+	return db
 		.prepare(
 			`SELECT
 				COALESCE(SUM(CASE WHEN og.payment_method = 'cash' THEN og.amount_cents ELSE 0 END), 0) AS cash_cents,
@@ -39,12 +82,98 @@ function buildZReport(
 			 WHERE o.shift_id = ? AND og.is_paid = 1`
 		)
 		.get(shiftId) as { cash_cents: number; cashless_cents: number };
+}
 
-	const ordersCount = (
-		db.prepare(`SELECT COUNT(*) AS n FROM orders WHERE shift_id = ? AND status = 'closed'`).get(shiftId) as
-			| { n: number }
-			| undefined
-	)?.n ?? 0;
+function closedOrdersCount(db: Database.Database, shiftId: number): number {
+	return (
+		(
+			db
+				.prepare(`SELECT COUNT(*) AS n FROM orders WHERE shift_id = ? AND status = 'closed'`)
+				.get(shiftId) as { n: number } | undefined
+		)?.n ?? 0
+	);
+}
+
+function openOrdersCount(db: Database.Database, shiftId: number): number {
+	return (
+		(
+			db
+				.prepare(`SELECT COUNT(*) AS n FROM orders WHERE shift_id = ? AND status = 'open'`)
+				.get(shiftId) as { n: number } | undefined
+		)?.n ?? 0
+	);
+}
+
+export function loadPrechecksForShift(
+	db: Database.Database,
+	locationId: number,
+	shiftId: number
+): { open: OpenPrecheck[]; closed_prechecks: ClosedPrecheck[]; cancelled: CancelledPrecheck[] } {
+	const openRows = db
+		.prepare(
+			`SELECT o.id, o.created_at, u.name AS waiter_name, h.name AS hall_name,
+			        COALESCE((
+			          SELECT SUM(oi.quantity * oi.price_cents) FROM order_items oi WHERE oi.order_id = o.id
+			        ), 0) AS total_cents
+			 FROM orders o
+			 JOIN users u ON u.id = o.waiter_id
+			 JOIN halls h ON h.id = o.hall_id
+			 WHERE o.location_id = ? AND o.shift_id = ? AND o.status = 'open'
+			 ORDER BY o.created_at ASC`
+		)
+		.all(locationId, shiftId) as Array<Omit<OpenPrecheck, 'items' | 'guests'>>;
+
+	const itemsStmt = db.prepare(
+		`SELECT title, quantity, price_cents, status FROM order_items WHERE order_id = ? ORDER BY id`
+	);
+	const guestsStmt = db.prepare(
+		`SELECT name, is_paid FROM order_guests WHERE order_id = ? ORDER BY sort_order`
+	);
+
+	const open = openRows.map((row) => ({
+		...row,
+		items: itemsStmt.all(row.id) as ShiftItem[],
+		guests: guestsStmt.all(row.id) as ShiftGuest[]
+	}));
+
+	const cancelled = db
+		.prepare(
+			`SELECT o.id, o.created_at, o.cancelled_at, o.cancel_reason, u.name AS waiter_name,
+			        a.name AS cancelled_by,
+			        COALESCE((
+			          SELECT SUM(oi.quantity * oi.price_cents) FROM order_items oi WHERE oi.order_id = o.id
+			        ), 0) AS total_cents
+			 FROM orders o
+			 JOIN users u ON u.id = o.waiter_id
+			 LEFT JOIN users a ON a.id = o.cancelled_by_user_id
+			 WHERE o.location_id = ? AND o.shift_id = ? AND o.status = 'cancelled'
+			 ORDER BY o.cancelled_at DESC`
+		)
+		.all(locationId, shiftId) as CancelledPrecheck[];
+
+	const closed_prechecks = db
+		.prepare(
+			`SELECT o.id, o.created_at, o.closed_at, u.name AS waiter_name, h.name AS hall_name,
+			        COALESCE((
+			          SELECT SUM(oi.quantity * oi.price_cents) FROM order_items oi WHERE oi.order_id = o.id
+			        ), 0) AS total_cents
+			 FROM orders o
+			 JOIN users u ON u.id = o.waiter_id
+			 JOIN halls h ON h.id = o.hall_id
+			 WHERE o.location_id = ? AND o.shift_id = ? AND o.status = 'closed'
+			 ORDER BY o.closed_at DESC`
+		)
+		.all(locationId, shiftId) as ClosedPrecheck[];
+
+	return { open, closed_prechecks, cancelled };
+}
+
+function buildZReport(
+	db: Database.Database,
+	shiftId: number
+): Omit<ZReport, 'id' | 'shift_id' | 'created_at'> {
+	const payments = shiftPayments(db, shiftId);
+	const ordersCount = closedOrdersCount(db, shiftId);
 
 	const byHalls = db
 		.prepare(
@@ -92,7 +221,9 @@ export function listShifts(db: Database.Database, locationId: number): ShiftRow[
 			 ORDER BY s.id DESC
 			 LIMIT 50`
 		)
-		.all(locationId) as Array<Omit<ShiftRow, 'z'>>;
+		.all(locationId) as Array<
+		Pick<ShiftRow, 'id' | 'opened_at' | 'closed_at' | 'status' | 'opened_by' | 'closed_by'>
+	>;
 
 	const zStmt = db.prepare(
 		`SELECT id, shift_id, total_cents, cash_cents, cashless_cents, orders_count, by_halls_json, by_waiters_json, created_at
@@ -126,7 +257,35 @@ export function listShifts(db: Database.Database, locationId: number): ShiftRow[
 					created_at: zr.created_at
 				}
 			: null;
-		return { id: s.id, opened_at: s.opened_at, closed_at: s.closed_at, status: s.status, opened_by: s.opened_by, closed_by: s.closed_by, z };
+
+		const payments = shiftPayments(db, s.id);
+		const revenue_cents = payments.cash_cents + payments.cashless_cents;
+		const expenses = listExpensesForShift(db, s.id);
+		const expenses_cents = expensesTotalForShift(db, s.id);
+		const prechecks =
+			s.status === 'open'
+				? loadPrechecksForShift(db, locationId, s.id)
+				: { open: [], closed_prechecks: [], cancelled: [] };
+
+		return {
+			id: s.id,
+			opened_at: s.opened_at,
+			closed_at: s.closed_at,
+			status: s.status,
+			opened_by: s.opened_by,
+			closed_by: s.closed_by,
+			z,
+			orders_count: closedOrdersCount(db, s.id),
+			cash_cents: payments.cash_cents,
+			cashless_cents: payments.cashless_cents,
+			revenue_cents,
+			expenses_cents,
+			net_cents: revenue_cents - expenses_cents,
+			expenses,
+			open: prechecks.open,
+			closed_prechecks: prechecks.closed_prechecks,
+			cancelled: prechecks.cancelled
+		};
 	});
 }
 
@@ -143,6 +302,8 @@ export function closeOpenShift(
 		.prepare(`SELECT id FROM shifts WHERE location_id = ? AND status = 'open'`)
 		.get(locationId) as { id: number } | undefined;
 	if (!shift) return { error: 'no_open_shift' };
+
+	if (openOrdersCount(db, shift.id) > 0) return { error: 'open_prechecks' };
 
 	const z = buildZReport(db, shift.id);
 	const zId = db.transaction(() => {

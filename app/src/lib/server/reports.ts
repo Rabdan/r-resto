@@ -104,7 +104,7 @@ export function ordersInRange(
 export type ExpenseRow = {
 	id: number;
 	created_at: string;
-	category: string;
+	payment_method: 'cash' | 'cashless';
 	amount_cents: number;
 	comment: string | null;
 	author: string;
@@ -118,7 +118,7 @@ export function expensesInRange(
 ): ExpenseRow[] {
 	return db
 		.prepare(
-			`SELECT e.id, e.created_at, e.category, e.amount_cents, e.comment, u.name AS author
+			`SELECT e.id, e.created_at, e.payment_method, e.amount_cents, e.comment, u.name AS author
 			 FROM expenses e
 			 JOIN users u ON u.id = e.user_id
 			 WHERE e.location_id = ?

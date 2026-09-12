@@ -127,15 +127,15 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	const exp = workbook.addWorksheet('Расходы');
 	exp.columns = [
 		{ header: 'Дата', key: 'created_at', width: 20 },
-		{ header: 'Категория', key: 'category', width: 20 },
+		{ header: 'Тип', key: 'payment_method', width: 16 },
 		{ header: sumLabel, key: 'amount', width: 14 },
 		{ header: 'Автор', key: 'author', width: 18 },
-		{ header: 'Комментарий', key: 'comment', width: 32 }
+		{ header: 'Примечание', key: 'comment', width: 32 }
 	];
 	for (const row of expenses) {
 		exp.addRow({
 			created_at: row.created_at,
-			category: row.category,
+			payment_method: row.payment_method === 'cash' ? 'Наличные' : 'Банк',
 			amount: money(row.amount_cents),
 			author: row.author,
 			comment: row.comment ?? ''

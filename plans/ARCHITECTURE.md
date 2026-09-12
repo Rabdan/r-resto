@@ -79,7 +79,7 @@ erDiagram
 | `orders` | Пречек: `open` / `closed` / `cancelled` |
 | `order_guests` | Гости сплита, оплата каждого |
 | `order_items` | Позиции: цена зафиксирована; статус кухни |
-| `expenses` | Операционные расходы точки |
+| `expenses` | Расходы смены: `shift_id`, `payment_method` (`cash` / `cashless`), сумма, примечание |
 
 ### Статусы позиции (`order_items.status`)
 
@@ -126,9 +126,11 @@ erDiagram
 - `GET /api/kds` — очередь кухни (открытые пречеки с pending+); экран `/kitchen` показывает FIFO-список (read-only, без кнопок статуса)
 - `PATCH /api/kds/items/:id` — ready / out_of_stock (скелет API; кнопки KDS ещё не в UI)
 - `GET|POST /api/menu`, upload картинки
-- `GET|POST /api/shifts`, close + Z (открытие смены — сессия админа)
-- `GET /api/admin/prechecks` — открытые пречеки и последние отмены
+- `GET|POST /api/shifts`, close + Z (открытие смены — сессия админа; закрытие — только без открытых пречеков)
+- `GET /api/admin/shifts` — текущая и закрытые смены с чеками, выручкой и расходами
+- `GET /api/admin/prechecks` — чеки открытой смены
 - `POST /api/admin/prechecks/:id/cancel` — `{ reason }` обязательно
+- `POST /api/admin/expenses`, `DELETE /api/admin/expenses/:id` — расходы открытой смены
 - `GET /api/admin/analytics?from&to` — товары vs прошлый период той же длины
 - `GET /api/admin/export?from&to` — xlsx (Чеки, Товары, Сравнение, Расходы)
 - `GET /api/events` — SSE
@@ -157,7 +159,7 @@ src/
     +page.svelte           # привязка
     waiter/+layout.svelte  # гард роли waiter, тёмная оболочка
     kitchen/+layout.svelte # гард роли kitchen, тёмная оболочка
-    admin/{devices,menu,prechecks,shift,analytics,finance}
+    admin/{devices,menu,shift,analytics,finance}
     api/...
 ```
 

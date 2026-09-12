@@ -52,7 +52,9 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	sheet.addRow({ label: 'Чеков закрыто', value: z.orders_count });
 	sheet.addRow({ label: 'Наличные', value: money(z.cash_cents) });
 	sheet.addRow({ label: 'Безналичные', value: money(z.cashless_cents) });
-	const totalRow = sheet.addRow({ label: 'Итого', value: money(z.total_cents) });
+	sheet.addRow({ label: 'Выручка', value: money(z.total_cents) });
+	sheet.addRow({ label: 'Расходы', value: money(shift.expenses_cents) });
+	const totalRow = sheet.addRow({ label: 'Итого', value: money(shift.net_cents) });
 	totalRow.font = { bold: true };
 	sheet.getColumn('value').numFmt = numFmt;
 	styleHeader(sheet);

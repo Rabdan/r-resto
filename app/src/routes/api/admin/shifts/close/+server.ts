@@ -13,6 +13,9 @@ export const POST: RequestHandler = async ({ locals }) => {
 
 	const result = closeOpenShift(db, locationId, locals.admin!.id);
 	if ('error' in result) {
+		if (result.error === 'open_prechecks') {
+			return json({ error: 'Сначала закрой или отмени незакрытые чеки' }, { status: 409 });
+		}
 		return json({ error: 'Смена не открыта' }, { status: 409 });
 	}
 

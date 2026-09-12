@@ -25,15 +25,21 @@ API: `DELETE /api/admin/staff/[id]`, `POST /api/admin/staff/[id]/restore`, `PATC
 
 API: `DELETE /api/admin/menu/items/[id]`, `DELETE /api/admin/menu/categories/[id]?deleteItems=1`.
 
-## 4. Чеки (`/admin/prechecks`)
+## 4. Чеки
 
-Вкладки: Активные / Закрытые / Отменённые / Все. `GET /api/admin/prechecks?tab=`.
+Отдельного пункта навигации нет: `/admin/prechecks` редиректит на `/admin/shift`. Отмена пречека — на текущей смене.
+
+API: `GET /api/admin/prechecks` (чеки открытой смены), `POST /api/admin/prechecks/:id/cancel`.
 
 ## 5. Смена (`/admin/shift`)
 
-Открытие смены, закрытие смены с расчётом Z-отчёта (`z_reports`), просмотр закрытых смен и их Z-отчётов, Excel.
+Открытие смены. На открытой смене: выручка банк/касса, вкладки чеков (все / незакрытые / закрытые / отменённые), отмена пречека, таблица расходов (время, сумма, банк/наличные, примечание). Закрытие смены блокируется, пока есть незакрытые чеки; Z-отчёт (`z_reports`) как раньше.
 
-API: `GET /api/admin/shifts`, `POST /api/admin/shifts/close`, `GET /api/admin/shifts/[id]/z/export`.
+Закрытые смены: число чеков, выручка, расходы, итого (выручка − расходы); раскрытие — нал/банк, залы, официанты, список расходов, Excel.
+
+Миграция `010_shift_expenses.sql`: `expenses.shift_id`, `payment_method` (`cash` | `cashless`).
+
+API: `GET /api/admin/shifts`, `POST /api/admin/shifts/close`, `GET /api/admin/shifts/[id]/export`, `POST /api/admin/expenses`, `DELETE /api/admin/expenses/[id]`.
 
 ## 6. Отчёты (`/admin/analytics`)
 
