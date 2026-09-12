@@ -7,6 +7,7 @@ import sql005 from './migrations/005_menu_admin.sql?raw';
 import sql006 from './migrations/006_admin_modernization.sql?raw';
 import sql007 from './migrations/007_device_role.sql?raw';
 import sql008 from './migrations/008_staff_block.sql?raw';
+import sql009 from './migrations/009_device_halls.sql?raw';
 import { hashPin } from '../pin';
 
 const migrations: Array<{ id: string; sql: string }> = [
@@ -17,7 +18,8 @@ const migrations: Array<{ id: string; sql: string }> = [
 	{ id: '005_menu_admin.sql', sql: sql005 },
 	{ id: '006_admin_modernization.sql', sql: sql006 },
 	{ id: '007_device_role.sql', sql: sql007 },
-	{ id: '008_staff_block.sql', sql: sql008 }
+	{ id: '008_staff_block.sql', sql: sql008 },
+	{ id: '009_device_halls.sql', sql: sql009 }
 ];
 
 const DEFAULT_SUPERADMIN_PIN = '1708';

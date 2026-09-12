@@ -1,9 +1,9 @@
 <script lang="ts">
+	import { getContext, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { onMount } from 'svelte';
 	import PosShell from '$lib/components/PosShell.svelte';
+	import { POS_SESSION_KEY, onPosEvent, type PosSessionState } from '$lib/client/pos-session.svelte';
 	import { formatMoney } from '$lib/money';
-	import type { DeviceSession } from '$lib/types';
 
 	type GuestRef = { name: string; payment_method?: string | null };
 	type Order = {
@@ -19,7 +19,9 @@
 	};
 	type Hall = { id: number; name: string; color_hex: string; sort_order: number };
 
-	let device = $state<DeviceSession | null>(null);
+	const session = getContext<PosSessionState>(POS_SESSION_KEY);
+	const device = $derived(session.device);
+
 	let orders = $state<Order[]>([]);
 	let halls = $state<Hall[]>([]);
 	let hallId = $state<number | null>(null);
@@ -30,30 +32,22 @@
 	const visibleOrders = $derived(orders.filter((o) => o.hall_id === hallId));
 
 	onMount(() => {
-		let es: EventSource | undefined;
-		void (async () => {
-			const me = await fetch('/api/devices/me').then((r) => r.json());
-			device = me.device;
-			if (device?.status !== 'active' || device.role !== 'waiter') {
-				await goto('/');
-				return;
+		void loadHalls();
+		void loadOrders();
+		const offCancelled = onPosEvent('PRECHECK_CANCELLED', (ev) => {
+			try {
+				const data = JSON.parse(ev.data) as { orderId?: number };
+				message = data.orderId ? `Пречек №${data.orderId} отменён админом` : 'Пречек отменён админом';
+			} catch {
+				message = 'Пречек отменён админом';
 			}
-			await loadHalls();
-			await loadOrders();
-			es = new EventSource('/api/events');
-			es.addEventListener('PRECHECK_CANCELLED', (ev) => {
-				try {
-					const data = JSON.parse(ev.data) as { orderId?: number };
-					message = data.orderId ? `Пречек №${data.orderId} отменён админом` : 'Пречек отменён админом';
-				} catch {
-					message = 'Пречек отменён админом';
-				}
-				void loadOrders();
-			});
-			es.addEventListener('PRECHECK_CLOSED', () => void loadOrders());
-			es.addEventListener('DEVICE_BLOCKED', () => void goto('/'));
-		})();
-		return () => es?.close();
+			void loadOrders();
+		});
+		const offClosed = onPosEvent('PRECHECK_CLOSED', () => void loadOrders());
+		return () => {
+			offCancelled();
+			offClosed();
+		};
 	});
 
 	async function loadHalls() {
@@ -192,7 +186,8 @@
 	{#if tab === 'active'}
 		<button
 			onclick={createPrecheck}
-			class="fixed bottom-4 left-4 right-4 h-16 rounded-md bg-emerald-600 text-lg font-bold text-white"
+			class="fixed bottom-4 left-4 right-4 h-16 rounded-md text-lg font-bold text-white"
+			style={`background-color: ${selectedHall?.color_hex ?? '#065F46'}`}
 		>
 			Создать новый пречек
 		</button>

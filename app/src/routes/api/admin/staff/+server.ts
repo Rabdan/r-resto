@@ -34,7 +34,30 @@ export const GET: RequestHandler = async ({ locals }) => {
 			 LEFT JOIN users u ON u.id = d.assigned_user_id
 			 ORDER BY d.id DESC`
 		)
-		.all();
+		.all() as Array<{
+		id: number;
+		device_code: string;
+		device_name: string | null;
+		status: string;
+		assigned_user_id: number | null;
+		role: string | null;
+		blocked_at: string | null;
+		user_name: string | null;
+	}>;
+
+	const hallRows = db.prepare(`SELECT device_id, hall_id FROM device_halls`).all() as Array<{
+		device_id: number;
+		hall_id: number;
+	}>;
+	const hallMap = new Map<number, number[]>();
+	for (const row of hallRows) {
+		const list = hallMap.get(row.device_id) ?? [];
+		list.push(row.hall_id);
+		hallMap.set(row.device_id, list);
+	}
+	for (const device of devices) {
+		(device as { hall_ids?: number[] }).hall_ids = hallMap.get(device.id) ?? [];
+	}
 
 	return json({ staff, devices });
 };

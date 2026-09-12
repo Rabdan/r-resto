@@ -8,8 +8,8 @@ POS / KDS / админка одним Node-процессом. Код: [`app/`](
 
 - **SvelteKit 2** + **Svelte 5** (runes), TypeScript.
 - **Адаптер:** `@sveltejs/adapter-node` (не serverless, не static).
-- **Клиент:** SPA (`ssr = false` в корневом layout). Один origin с API.
-- **PWA:** манифест + `src/service-worker.ts`. Кэш оболочки; `/api/*` и SSE всегда из сети.
+- **Клиент:** одна SPA (`ssr = false` в корневом layout). Один origin с API. Официант и кухня — отдельные оболочки (`waiter/+layout`, `kitchen/+layout`), не отдельные сборки.
+- **PWA:** одно устанавливаемое приложение. `static/manifest.webmanifest` (`start_url` / `scope` `/`), PNG 192/512 + maskable, `apple-touch-icon.png`, `src/service-worker.ts`. Навигации — network-first; `/_app/immutable/*` — cache-first; остальной static — stale-while-revalidate. `/api/*` и SSE всегда из сети. Меню на клиенте обновляется событием `MENU_UPDATED`.
 - **БД:** SQLite, `better-sqlite3`, **без ORM**. WAL.
 - **Realtime:** Server-Sent Events (`GET /api/events`). REST пишет, SSE рассылает.
 - **Отчёты:** ExcelJS на сервере.
@@ -17,14 +17,17 @@ POS / KDS / админка одним Node-процессом. Код: [`app/`](
 
 ```mermaid
 flowchart LR
-  Waiter["Waiter PWA"] --> SK["SvelteKit Node"]
-  Kitchen["Kitchen KDS"] --> SK
-  Admin["Admin PWA"] --> SK
+  PWA["R-resto PWA"] --> Bind["/ привязка"]
+  Bind -->|"waiter"| Waiter["/waiter оболочка"]
+  Bind -->|"kitchen"| Kitchen["/kitchen оболочка"]
+  PWA --> Admin["/admin"]
+  Waiter --> SK["SvelteKit Node"]
+  Kitchen --> SK
+  Admin --> SK
   SK --> DB["data/sqlite/pos.db"]
   SK --> Files["data/uploads"]
   SK -->|"SSE"| Waiter
   SK --> Kitchen
-  SK --> Admin
 ```
 
 ## 2. Роли и доступ
@@ -106,7 +109,7 @@ erDiagram
 | `ITEM_STATUS_CHANGED` | кухня | официант |
 | `SHIFT_OPENED` / `SHIFT_CLOSED` | админ | все терминалы точки |
 
-Клиент: `EventSource`, reconnect с backoff. Не кэшировать в SW.
+Клиент: один `EventSource` на POS-сессию (`lib/client/pos-session.svelte.ts`) с reconnect/backoff. Страницы подписываются на события, не открывают свой канал. Конструктор официанта на `MENU_UPDATED` перезапрашивает `GET /api/menu`. Не кэшировать SSE и `/api/*` в SW.
 
 ## 5. HTTP API (скелет)
 
@@ -120,8 +123,8 @@ erDiagram
 - `GET /api/admin/me`
 - `POST /api/admin/devices/bind` — код + waiter/kitchen
 - `GET|POST /api/orders`, `POST /api/orders/:id/items`, split, pay, fire
-- `GET /api/kds` — только pending+
-- `PATCH /api/kds/items/:id` — ready / out_of_stock
+- `GET /api/kds` — очередь кухни (открытые пречеки с pending+); экран `/kitchen` показывает FIFO-список (read-only, без кнопок статуса)
+- `PATCH /api/kds/items/:id` — ready / out_of_stock (скелет API; кнопки KDS ещё не в UI)
 - `GET|POST /api/menu`, upload картинки
 - `GET|POST /api/shifts`, close + Z (открытие смены — сессия админа)
 - `GET /api/admin/prechecks` — открытые пречеки и последние отмены
@@ -137,11 +140,12 @@ erDiagram
 ```text
 src/
   hooks.server.ts          # cookie, migrate side-effect via db import
-  service-worker.ts       # PWA, exclude /api
+  service-worker.ts       # PWA: network-first navigate, exclude /api
   lib/
     money.ts
     types.ts
-    components/            # PosShell, плитки, шторка — наращивать здесь
+    client/pos-session.svelte.ts  # device + один SSE для POS
+    components/            # PosShell, PosRoleGate, плитки, шторка
     server/
       paths.ts
       sse.ts
@@ -149,13 +153,15 @@ src/
       db/migrate.ts
       db/migrations/
   routes/
-    +layout.ts             # ssr = false
+    +layout.ts             # ssr = false, currency в data
     +page.svelte           # привязка
-    waiter/                # главный UI
-    kitchen/
+    waiter/+layout.svelte  # гард роли waiter, тёмная оболочка
+    kitchen/+layout.svelte # гард роли kitchen, тёмная оболочка
     admin/{devices,menu,prechecks,shift,analytics,finance}
     api/...
 ```
+
+PWA-файлы в `app/static/`: `manifest.webmanifest`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png`, SVG-исходники иконок.
 
 ## 7. Данные и Docker
 
@@ -171,4 +177,4 @@ src/
 2. Официант: список, плитки, шторка, гости/сплит, fire, оплата.
 3. KDS.
 4. Админ: устройства, меню/uploads, отмена, смена, Excel/P&L.
-5. Дожать PWA (иконки, standalone), жесты официанта в браузере.
+5. PWA: одно приложение, PNG-иконки, standalone, SW без кэша API; жесты официанта в браузере.

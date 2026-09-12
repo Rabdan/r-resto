@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import PinPad from '$lib/components/PinPad.svelte';
 	import logo from '$lib/assets/logo.svg';
@@ -10,7 +11,7 @@
 	onMount(async () => {
 		const me = await fetch('/api/admin/me');
 		if (me.ok) {
-			window.location.href = '/admin/devices';
+			await goto('/admin/devices');
 		}
 	});
 
@@ -32,7 +33,7 @@
 			error = 'Неверный пароль';
 			return;
 		}
-		window.location.href = '/admin/devices';
+		await goto('/admin/devices');
 	}
 </script>
 

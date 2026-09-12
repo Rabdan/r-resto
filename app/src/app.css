@@ -7,6 +7,12 @@ body {
 	color: #0f172a;
 }
 
+html.pos-shell,
+html.pos-shell body {
+	background: #0f172a;
+	color: #f1f5f9;
+}
+
 body {
 	font-family:
 		ui-sans-serif,
@@ -22,4 +28,8 @@ input,
 select,
 textarea {
 	touch-action: manipulation;
+}
+
+* {
+	-webkit-tap-highlight-color: transparent;
 }

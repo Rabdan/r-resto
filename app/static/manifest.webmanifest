@@ -1,11 +1,13 @@
 {
+	"id": "/",
 	"name": "R-resto",
 	"short_name": "R-resto",
 	"description": "POS, кухня и админка",
 	"start_url": "/",
+	"scope": "/",
 	"display": "standalone",
 	"orientation": "portrait",
-	"background_color": "#f1f5f9",
+	"background_color": "#0f172a",
 	"theme_color": "#ff6a3d",
 	"lang": "ru",
 	"icons": [

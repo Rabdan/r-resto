@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
+	import { onPosEvent } from '$lib/client/pos-session.svelte';
 	import PinPad from '$lib/components/PinPad.svelte';
 	import CartDrawer from '$lib/components/waiter/CartDrawer.svelte';
 	import type { DrawerItem } from '$lib/components/waiter/CartDrawer.svelte';
@@ -25,12 +26,13 @@
 		guests: Guest[];
 		items: Item[];
 	};
-	type Category = { id: number; name: string };
+	type Category = { id: number; name: string; color_hex: string };
 	type MenuItem = {
 		id: number;
 		category_id: number;
 		title: string;
 		price_cents: number;
+		image_path: string | null;
 		is_available: number;
 	};
 	type Hall = { id: number; name: string; color_hex: string; sort_order: number };
@@ -52,7 +54,6 @@
 	let categoryId = $state<number | 'all'>('all');
 	let drawerH = $state(64);
 	let maxDrawer = $state(400);
-	let expandedTile = $state<number | null>(null);
 	let error = $state<string | null>(null);
 	let customOpen = $state(false);
 	let customTitle = $state('');
@@ -129,33 +130,40 @@
 		});
 	});
 
-	const CATEGORY_COLORS = [
-		'bg-emerald-600',
-		'bg-sky-600',
-		'bg-violet-600',
-		'bg-amber-600',
-		'bg-rose-600',
-		'bg-cyan-600',
-		'bg-orange-600',
-		'bg-fuchsia-600',
-		'bg-indigo-600',
-		'bg-teal-600'
-	] as const;
-
-	const categoryColors = $derived.by(() => {
-		const map = new Map<number, string>();
-		categories.forEach((cat, i) => {
-			map.set(cat.id, CATEGORY_COLORS[i % CATEGORY_COLORS.length]);
-		});
-		return map;
-	});
-
-	function categoryColor(cat: Category): string {
-		return categoryColors.get(cat.id) ?? 'bg-slate-600';
+	function categoryHex(categoryId: number): string {
+		return categories.find((c) => c.id === categoryId)?.color_hex ?? '#334155';
 	}
 
-	function tileColor(item: MenuItem): string {
-		return categoryColors.get(item.category_id) ?? 'bg-slate-600';
+	function lighten(hex: string, factor: number): string {
+		const clean = hex.replace('#', '');
+		if (!/^[0-9a-fA-F]{6}$/.test(clean)) return hex;
+		const r = parseInt(clean.slice(0, 2), 16);
+		const g = parseInt(clean.slice(2, 4), 16);
+		const b = parseInt(clean.slice(4, 6), 16);
+		const mix = (v: number) => Math.round(v + (255 - v) * factor);
+		return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+	}
+
+	function hexWithAlpha(hex: string, alpha: number): string {
+		const clean = hex.replace('#', '');
+		if (!/^[0-9a-fA-F]{6}$/.test(clean)) return `rgba(15, 23, 42, ${alpha})`;
+		const a = Math.round(alpha * 255)
+			.toString(16)
+			.padStart(2, '0');
+		return `#${clean}${a}`;
+	}
+
+	function tileBackground(item: MenuItem): string {
+		const hex = categoryHex(item.category_id);
+		if (item.image_path) {
+			const overlay = hexWithAlpha(hex, 0.55);
+			return `background-color: ${hex}; background-image: linear-gradient(${overlay}, ${overlay}), url('${imageUrl(item.image_path)}'); background-size: cover; background-position: center;`;
+		}
+		return `background-color: ${hex}`;
+	}
+
+	function imageUrl(path: string | null): string {
+		return path ? `/api/uploads/${path}` : '';
 	}
 
 	function qtyOnGuest(menuItemId: number): number {
@@ -167,13 +175,12 @@
 
 	onMount(() => {
 		function resize() {
-			maxDrawer = Math.max(200, window.innerHeight - 76);
+			maxDrawer = Math.max(200, window.innerHeight - 72);
 		}
 		resize();
 		window.addEventListener('resize', resize);
 		void boot();
-		const es = new EventSource('/api/events');
-		es.addEventListener('PRECHECK_CANCELLED', (ev) => {
+		const offCancelled = onPosEvent('PRECHECK_CANCELLED', (ev) => {
 			try {
 				const data = JSON.parse(ev.data) as { orderId?: number };
 				if (data.orderId === orderId) void goto('/waiter');
@@ -181,10 +188,11 @@
 				/* ignore */
 			}
 		});
-		es.addEventListener('DEVICE_BLOCKED', () => void goto('/'));
+		const offMenu = onPosEvent('MENU_UPDATED', () => void loadMenu());
 		return () => {
 			window.removeEventListener('resize', resize);
-			es.close();
+			offCancelled();
+			offMenu();
 		};
 	});
 
@@ -193,10 +201,7 @@
 			await bootDraft();
 			return;
 		}
-		const [orderRes, menuRes] = await Promise.all([
-			fetch(`/api/orders/${orderId}`),
-			fetch('/api/menu')
-		]);
+		const [orderRes] = await Promise.all([fetch(`/api/orders/${orderId}`), loadMenu()]);
 		if (orderRes.status === 404) {
 			await goto('/waiter');
 			return;
@@ -212,21 +217,19 @@
 		} else {
 			drawerH = peek;
 		}
-		if (menuRes.ok) {
-			const m = await menuRes.json();
-			categories = m.categories ?? [];
-			menu = m.items ?? [];
-		}
+	}
+
+	async function loadMenu() {
+		const menuRes = await fetch('/api/menu');
+		if (!menuRes.ok) return;
+		const m = await menuRes.json();
+		categories = m.categories ?? [];
+		menu = m.items ?? [];
 	}
 
 	async function bootDraft() {
 		const hallParam = Number(page.url.searchParams.get('hallId'));
-		const [menuRes, hallsRes] = await Promise.all([fetch('/api/menu'), fetch('/api/halls')]);
-		if (menuRes.ok) {
-			const m = await menuRes.json();
-			categories = m.categories ?? [];
-			menu = m.items ?? [];
-		}
+		const [, hallsRes] = await Promise.all([loadMenu(), fetch('/api/halls')]);
 		if (hallsRes.ok) {
 			const hd = await hallsRes.json();
 			const halls = (hd.halls ?? []) as Hall[];
@@ -306,34 +309,6 @@
 			body: JSON.stringify({ guestId, menuItemId: item.id })
 		});
 		await applyRes(res);
-	}
-
-	let pressTimer: ReturnType<typeof setTimeout> | undefined;
-	function tilePointerDown(item: MenuItem, e: PointerEvent) {
-		if (!item.is_available) return;
-		const startX = e.clientX;
-		const startY = e.clientY;
-		pressTimer = setTimeout(() => {
-			expandedTile = item.id;
-			pressTimer = undefined;
-		}, 300);
-		function move(ev: PointerEvent) {
-			if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 12 && pressTimer) {
-				clearTimeout(pressTimer);
-				pressTimer = undefined;
-			}
-		}
-		function up() {
-			window.removeEventListener('pointermove', move);
-			window.removeEventListener('pointerup', up);
-			if (pressTimer) {
-				clearTimeout(pressTimer);
-				pressTimer = undefined;
-				if (expandedTile !== item.id) void addMenuItem(item);
-			}
-		}
-		window.addEventListener('pointermove', move);
-		window.addEventListener('pointerup', up);
 	}
 
 	async function changeQty(itemId: number, action: 'inc' | 'dec') {
@@ -639,12 +614,12 @@
 		</CartDrawer>
 
 		<div class="flex h-full flex-col pt-20 pb-2">
-			<div class="px-3 pt-2">
+			<div class="px-3 pt-2 pb-2">
 				<div class="flex gap-2 overflow-x-auto pb-1">
 					<button
 						type="button"
 						onclick={() => (categoryId = 'all')}
-						class="h-12 shrink-0 rounded px-4 text-base font-bold {categoryId === 'all'
+						class="h-12 shrink-0 rounded px-4 text-[13px] font-bold {categoryId === 'all'
 							? 'bg-slate-800 text-white'
 							: 'bg-slate-200 text-slate-700'}"
 					>
@@ -654,9 +629,10 @@
 						<button
 							type="button"
 							onclick={() => (categoryId = cat.id)}
-							class="h-12 shrink-0 rounded px-4 text-base font-bold {categoryId === cat.id
-								? categoryColor(cat) + ' text-white'
-								: 'bg-slate-200 text-slate-700'}"
+							class="h-12 shrink-0 rounded px-4 text-[13px] font-bold {categoryId === cat.id
+								? 'text-white'
+								: 'text-slate-800'}"
+							style={`background-color: ${categoryId === cat.id ? cat.color_hex : lighten(cat.color_hex, 0.55)}`}
 						>
 							{cat.name}
 						</button>
@@ -668,71 +644,46 @@
 				<p class="px-3 text-sm text-rose-600">{error}</p>
 			{/if}
 
-			<div class="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+			<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y px-3 pb-3">
 				<div class="grid grid-cols-2 gap-3 md:grid-cols-3">
 					<button
 						type="button"
 						onclick={() => (customOpen = true)}
 						class="min-h-28 rounded-md border-2 border-dashed border-slate-400 bg-slate-700 p-3 text-left text-white"
 					>
-						<p class="text-lg font-bold">Произвольный товар</p>
-						<p class="text-sm font-semibold text-slate-300">Ввести вручную</p>
+						<p class="text-[15px] font-bold">Произвольный товар</p>
+						<p class="text-[12px] font-semibold text-slate-300">Ввести вручную</p>
 					</button>
 					{#each visibleMenu as item}
 						<div
 							role="button"
 							tabindex="0"
-							class="relative min-h-28 rounded-md p-3 text-white {item.is_available
-								? tileColor(item)
+							onclick={() => void addMenuItem(item)}
+							onkeydown={(e) => {
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									void addMenuItem(item);
+								}
+							}}
+							class="relative min-h-28 touch-manipulation select-none cursor-pointer overflow-hidden rounded-md p-3 text-left text-white {item.is_available
+								? ''
 								: 'bg-slate-300 text-slate-500'}"
-							onpointerdown={(e) => tilePointerDown(item, e)}
+							style={item.is_available ? tileBackground(item) : ''}
 						>
 							{#if qtyOnGuest(item.id) > 0}
-								<button
-									type="button"
-									onpointerdown={(e) => e.stopPropagation()}
-									onclick={(e) => {
-										e.stopPropagation();
-										expandedTile = item.id;
-									}}
-									class="absolute right-2 top-2 flex h-8 min-w-8 items-center justify-center rounded-full bg-white px-1 text-sm font-extrabold text-rose-600 shadow"
+								<span
+									class="absolute right-2 top-2 z-10 flex h-8 min-w-8 items-center justify-center rounded-full bg-white px-1 text-sm font-extrabold text-rose-600 shadow"
 								>
 									{qtyOnGuest(item.id)}
-								</button>
+								</span>
 							{/if}
-							<p class="pr-10 text-lg font-bold leading-tight drop-shadow-sm">{item.title}</p>
-							<p class="mt-1 text-xl font-extrabold drop-shadow-sm">{formatMoney(item.price_cents)}</p>
-							{#if !item.is_available}
-								<p class="mt-1 text-xs font-bold text-rose-700">Стоп-лист</p>
-							{/if}
-							{#if expandedTile === item.id && item.is_available}
-								<div class="mt-2 flex items-center gap-2">
-									<button
-										type="button"
-										class="h-12 w-12 rounded bg-black/25 text-2xl font-bold text-white"
-										onpointerdown={(e) => e.stopPropagation()}
-										onclick={(e) => {
-											e.stopPropagation();
-											const line = items.find(
-												(i) =>
-													i.guest_id === guestId &&
-													i.menu_item_id === item.id &&
-													i.status === 'held'
-											);
-											if (line) void changeQty(line.id, 'dec');
-										}}>−</button
-									>
-									<button
-										type="button"
-										class="h-12 w-12 rounded bg-white text-2xl font-bold text-slate-900"
-										onpointerdown={(e) => e.stopPropagation()}
-										onclick={(e) => {
-											e.stopPropagation();
-											void addMenuItem(item);
-										}}>+</button
-									>
-								</div>
-							{/if}
+							<div class="relative z-10">
+								<p class="pr-10 text-[15px] font-bold leading-tight drop-shadow-sm">{item.title}</p>
+								<p class="mt-1 text-[17px] font-extrabold drop-shadow-sm">{formatMoney(item.price_cents)}</p>
+								{#if !item.is_available}
+									<p class="mt-1 text-xs font-bold text-rose-700">Стоп-лист</p>
+								{/if}
+							</div>
 						</div>
 					{/each}
 				</div>

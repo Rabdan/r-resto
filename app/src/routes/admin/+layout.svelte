@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import AdminNav from '$lib/components/AdminNav.svelte';
 
@@ -37,7 +38,7 @@
 
 	async function logout() {
 		await fetch('/api/admin/logout', { method: 'POST' });
-		window.location.href = '/admin';
+		await goto('/admin');
 	}
 </script>
 
@@ -57,7 +58,7 @@
 		<p class="text-slate-600">Сессия истекла или нет доступа</p>
 		<button
 			type="button"
-			onclick={() => (window.location.href = '/admin')}
+			onclick={() => void goto('/admin')}
 			class="h-12 rounded-md bg-emerald-600 px-6 font-semibold text-white"
 		>
 			Войти

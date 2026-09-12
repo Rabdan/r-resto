@@ -205,7 +205,7 @@
 					else expandDrawer();
 				}}
 			>
-				<span class="text-sm">{expanded ? 'Свернуть' : 'Позиции'}</span>
+				<span class="text-sm">{expanded ? 'В меню' : 'Позиции'}</span>
 				{#if expanded}
 					<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.5">
 						<path d="M18 15l-6-6-6 6" />

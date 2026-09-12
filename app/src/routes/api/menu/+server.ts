@@ -9,7 +9,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	}
 	const categories = db
 		.prepare(
-			`SELECT id, name, sort_order FROM menu_categories WHERE location_id = ? AND is_active = 1 ORDER BY sort_order`
+			`SELECT id, name, color_hex, sort_order FROM menu_categories WHERE location_id = ? AND is_active = 1 ORDER BY sort_order`
 		)
 		.all(locationId);
 	const items = db

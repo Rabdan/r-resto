@@ -23,10 +23,11 @@
 			{#if halls.length > 1}
 				<select
 					class="h-10 shrink-0 rounded-md border-0 bg-black/25 px-2 text-sm font-semibold text-white outline-none"
+					value={hallId ?? ''}
 					onchange={(e) => onHallChange(Number((e.currentTarget as HTMLSelectElement).value))}
 				>
 					{#each halls as hall}
-						<option value={hall.id} selected={hall.id === hallId} class="text-slate-900">{hall.name}</option>
+						<option value={hall.id} class="text-slate-900">{hall.name}</option>
 					{/each}
 				</select>
 			{/if}

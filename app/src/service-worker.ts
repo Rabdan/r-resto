@@ -30,9 +30,60 @@ self.addEventListener('fetch', (event) => {
 	if (request.method !== 'GET') return;
 
 	const url = new URL(request.url);
+	if (url.origin !== self.location.origin) return;
 	if (url.pathname.startsWith('/api/')) return;
 
-	event.respondWith(
-		caches.match(request).then((cached) => cached ?? fetch(request))
-	);
+	if (request.mode === 'navigate') {
+		event.respondWith(networkFirst(request));
+		return;
+	}
+
+	if (url.pathname.startsWith('/_app/immutable/')) {
+		event.respondWith(cacheFirst(request));
+		return;
+	}
+
+	event.respondWith(staleWhileRevalidate(event));
 });
+
+async function put(request: Request, response: Response): Promise<Response> {
+	if (response.ok) {
+		const copy = response.clone();
+		const cache = await caches.open(CACHE);
+		await cache.put(request, copy);
+	}
+	return response;
+}
+
+async function networkFirst(request: Request): Promise<Response> {
+	try {
+		return await put(request, await fetch(request));
+	} catch {
+		const cached = await caches.match(request);
+		if (cached) return cached;
+		const shell = await caches.match('/');
+		if (shell) return shell;
+		throw new Error('offline');
+	}
+}
+
+async function cacheFirst(request: Request): Promise<Response> {
+	const cached = await caches.match(request);
+	if (cached) return cached;
+	return put(request, await fetch(request));
+}
+
+async function staleWhileRevalidate(event: FetchEvent): Promise<Response> {
+	const request = event.request;
+	const cached = await caches.match(request);
+	const network = fetch(request)
+		.then((response) => put(request, response))
+		.catch(() => undefined);
+	if (cached) {
+		event.waitUntil(network);
+		return cached;
+	}
+	const response = await network;
+	if (response) return response;
+	throw new Error('offline');
+}
