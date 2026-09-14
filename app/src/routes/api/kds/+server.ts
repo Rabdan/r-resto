@@ -19,6 +19,7 @@ type ItemRow = {
 	quantity: number;
 	status: string;
 	ready_at: string | null;
+	image_path: string | null;
 };
 
 export const GET: RequestHandler = async ({ locals }) => {
@@ -52,9 +53,10 @@ export const GET: RequestHandler = async ({ locals }) => {
 
 	const items = db
 		.prepare(
-			`SELECT i.id, i.order_id, i.title, i.quantity, i.status, i.ready_at
+			`SELECT i.id, i.order_id, i.title, i.quantity, i.status, i.ready_at, m.image_path
 			 FROM order_items i
 			 JOIN orders o ON o.id = i.order_id
+			 LEFT JOIN menu_items m ON m.id = i.menu_item_id
 			 WHERE o.location_id = ? AND o.status = 'open'
 			   AND i.status IN ('pending', 'ready')
 			 ORDER BY i.id`
@@ -76,7 +78,8 @@ export const GET: RequestHandler = async ({ locals }) => {
 				title: item.title,
 				quantity: item.quantity,
 				status: item.status,
-				ready_at: item.ready_at
+				ready_at: item.ready_at,
+				image_path: item.image_path
 			}))
 		}))
 	});

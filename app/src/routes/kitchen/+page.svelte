@@ -9,6 +9,7 @@
 		quantity: number;
 		status: string;
 		ready_at: string | null;
+		image_path: string | null;
 	};
 	type KdsCard = {
 		order_id: number;
@@ -84,6 +85,10 @@
 		if (!res.ok || gen !== queueGen) return;
 		const data = (await res.json()) as { cards?: KdsCard[] };
 		cards = data.cards ?? [];
+	}
+
+	function imageUrl(path: string | null): string {
+		return path ? `/api/uploads/${path}` : '';
 	}
 
 	function queueAge(dbTime: string, nowMs: number): string {
@@ -170,7 +175,16 @@
 												: 'border-slate-200 bg-slate-50 text-slate-800'}"
 											onpointerup={() => onItemPointerUp(item)}
 										>
-											<span class="min-w-0 truncate">{item.title}</span>
+											<span class="flex min-w-0 items-center gap-3">
+												{#if item.image_path}
+													<img
+														src={imageUrl(item.image_path)}
+														alt=""
+														class="h-10 w-10 shrink-0 rounded object-cover"
+													/>
+												{/if}
+												<span class="min-w-0 truncate">{item.title}</span>
+											</span>
 											<span class="shrink-0">×{item.quantity}</span>
 										</button>
 									</li>
