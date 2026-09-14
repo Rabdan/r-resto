@@ -76,6 +76,8 @@
 	let payError = $state<string | null>(null);
 	let splitMode = $state(false);
 	let shiftOpen = $state(true);
+	let savePromptOpen = $state(false);
+	let savePromptTarget = $state('/waiter');
 
 	let guestSeq = 0;
 	let itemSeq = 0;
@@ -561,6 +563,7 @@
 	async function commitDraft(opts: {
 		fired: boolean;
 		pay?: { guestIndex: number; method: 'cash' | 'cashless'; cashReceivedCents?: number };
+		navigateTo?: string;
 	}): Promise<boolean> {
 		error = null;
 		const payload = {
@@ -588,8 +591,29 @@
 		}
 		if (data.order) applyOrder(data.order);
 		menuOpen = false;
-		await goto(`/waiter/${data.id}`, { replaceState: true });
+		await goto(opts.navigateTo ?? `/waiter/${data.id}`, { replaceState: true });
 		return true;
+	}
+
+	function requestLeave(target: string) {
+		if (isDraft && itemCount > 0) {
+			savePromptTarget = target;
+			savePromptOpen = true;
+			return;
+		}
+		void goto(target);
+	}
+
+	async function confirmSave() {
+		const target = savePromptTarget;
+		savePromptOpen = false;
+		await commitDraft({ fired: false, navigateTo: target });
+	}
+
+	function discardLeave() {
+		const target = savePromptTarget;
+		savePromptOpen = false;
+		void goto(target);
 	}
 
 	function openPay() {
@@ -646,18 +670,19 @@
 <div class="flex h-dvh flex-col bg-slate-50 print:hidden">
 	<header class="shrink-0 px-4 py-3 text-white" style="background-color: {hallColor}">
 		<div class="flex items-center gap-3">
-			<a href="/waiter" aria-label="Назад" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-white/30 bg-black/20 text-xl font-bold">←</a>
+			<button type="button" onclick={() => requestLeave('/waiter')} aria-label="Назад" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-white/30 bg-black/20 text-xl font-bold">←</button>
 			<span class="min-w-0 flex-1 truncate text-base font-semibold">{hallName}</span>
 			{#if showHome}
-				<a
-					href="/"
+				<button
+					type="button"
+					onclick={() => requestLeave('/')}
 					aria-label="Выбор роли"
 					class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-white/30 bg-black/20"
 				>
 					<svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
 					</svg>
-				</a>
+				</button>
 			{/if}
 		</div>
 	</header>
@@ -846,6 +871,25 @@
 		}}
 		onConfirm={() => void pay()}
 	/>
+{/if}
+
+{#if savePromptOpen}
+	<div class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center print:hidden">
+		<div class="w-full max-w-sm rounded-md border border-slate-300 bg-slate-100 p-4">
+			<p class="font-semibold">Сохранить заказ?</p>
+			<p class="mt-2 text-sm text-slate-600">
+				Заказ сохранится как предварительный (без отправки на кухню), его можно будет изменить позже.
+			</p>
+			<div class="mt-4 grid grid-cols-2 gap-2">
+				<button type="button" class="h-12 rounded-md border border-slate-300 bg-white" onclick={discardLeave}>Нет</button>
+				<button
+					type="button"
+					class="h-12 rounded-md border border-emerald-800 bg-emerald-600 font-semibold text-white"
+					onclick={() => void confirmSave()}>Сохранить</button
+				>
+			</div>
+		</div>
+	</div>
 {/if}
 
 <div class="hidden print:block">
