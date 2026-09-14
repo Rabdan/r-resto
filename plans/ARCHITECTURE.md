@@ -178,7 +178,7 @@ PWA-файлы в `app/static/`: `manifest.webmanifest` (POS), `admin.webmanifes
 
 - `DATABASE_PATH`, `UPLOADS_PATH`. Compose монтирует `./data:/data`.
 - Dev: hot reload, volume `app_node_modules` чтобы не затирать native-модуль.
-- Prod: multi-stage, `node build`, порт 3000, `HOST=0.0.0.0`.
+- Prod: multi-stage, `node build`, `HOST=0.0.0.0`, порт 3000 закрыт снаружи — перед ним Caddy (`Caddyfile`) на 80/443, который сам выпускает Let's Encrypt. Домен задаётся через `DOMAIN` (`.env`). Cert-данные Caddy — volume `caddy_data`/`caddy_config`.
 
 Миграции на старте **первого** обращения к БД (`getDb()`), не при импорте модуля (иначе `vite build` открывает SQLite). SQL подключается через `?raw`.
 

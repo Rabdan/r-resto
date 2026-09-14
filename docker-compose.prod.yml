@@ -3,8 +3,7 @@ services:
     build:
       context: ./app
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+    # наружу не торчит — доступ только через caddy
     volumes:
       - ./data:/data
     environment:
@@ -13,4 +12,30 @@ services:
       PORT: 3000
       DATABASE_PATH: /data/sqlite/pos.db
       UPLOADS_PATH: /data/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-r-resto.rzlab.xyz}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

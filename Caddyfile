@@ -1,0 +1,9 @@
+# Домен берётся из env DOMAIN (см. docker-compose.prod.yml / .env).
+# HTTPS (Let's Encrypt) выпускается автоматически.
+# Для уведомлений о продлении сертификата добавь в начало файла:
+#   {
+#       email you@example.com
+#   }
+{$DOMAIN} {
+	reverse_proxy app:3000
+}

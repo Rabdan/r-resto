@@ -7,3 +7,4 @@ app/.svelte-kit
 app/build
 .DS_Store
 idea*.md
+.env
