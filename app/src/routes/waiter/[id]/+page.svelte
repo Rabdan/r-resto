@@ -11,6 +11,8 @@
 	import type { OrderLine } from '$lib/components/waiter/OrderItems.svelte';
 	import { posRolesOf } from '$lib/types';
 	import { currencySymbol, formatMoney, parseMoney } from '$lib/money';
+	import { shareReceipt } from '$lib/receipt/delivery';
+	import { orderToReceiptData, renderReceiptPng } from '$lib/receipt/render-png';
 
 	type Guest = {
 		id: number;
@@ -78,6 +80,7 @@
 	let shiftOpen = $state(true);
 	let savePromptOpen = $state(false);
 	let savePromptTarget = $state('/waiter');
+	let printBusy = $state(false);
 
 	let guestSeq = 0;
 	let itemSeq = 0;
@@ -170,7 +173,7 @@
 		applyOrder(data.order);
 		if (data.order?.status === 'open') await loadMenu();
 		if (page.url.searchParams.get('pay') === '1' && data.order?.status === 'open') openPay();
-		if (page.url.searchParams.get('print') === '1') printCheck();
+		if (page.url.searchParams.get('print') === '1') void printCheck();
 		if (page.url.searchParams.get('addGuest') === '1' && data.order?.status === 'open') {
 			void addGuest();
 		}
@@ -630,36 +633,34 @@
 		return items.filter((i) => i.guest_id === id).reduce((n, i) => n + i.quantity * i.price_cents, 0);
 	}
 
-	function printCheck() {
-		window.print();
-	}
-
-	function printWhen(): string {
-		const src = createdAt;
-		if (src) {
-			const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(src);
-			if (m) {
-				const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
-				return d.toLocaleString('ru-RU', {
-					day: '2-digit',
-					month: '2-digit',
-					year: 'numeric',
-					hour: '2-digit',
-					minute: '2-digit'
-				});
-			}
+	async function printCheck() {
+		if (printBusy) return;
+		printBusy = true;
+		error = null;
+		try {
+			const data = orderToReceiptData({
+				hallName,
+				orderId,
+				isDraft,
+				isClosed,
+				createdAt,
+				guests,
+				items,
+				totalCents,
+				hallQrPath
+			});
+			const blob = await renderReceiptPng(data);
+			await shareReceipt(blob, {
+				orderId,
+				hallName,
+				totalLabel: formatMoney(totalCents)
+			});
+		} catch (e) {
+			if (e instanceof Error && e.name === 'AbortError') return;
+			error = 'Не удалось отправить чек';
+		} finally {
+			printBusy = false;
 		}
-		return new Date().toLocaleString('ru-RU', {
-			day: '2-digit',
-			month: '2-digit',
-			year: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
-	}
-
-	function imageUrl(path: string | null): string {
-		return path ? `/api/uploads/${path}` : '';
 	}
 </script>
 
@@ -749,10 +750,11 @@
 					{#if isClosed}
 						<button
 							type="button"
-							onclick={printCheck}
-							class="h-12 w-full rounded-md border border-slate-700 bg-slate-600 text-base font-bold text-white"
+							onclick={() => void printCheck()}
+							disabled={printBusy}
+							class="h-12 w-full rounded-md border border-slate-700 bg-slate-600 text-base font-bold text-white disabled:opacity-60"
 						>
-							Печать
+							{printBusy ? 'Готовим…' : 'Печать'}
 						</button>
 					{:else}
 						{#if guests.length > 1}
@@ -773,8 +775,13 @@
 							<button type="button" onclick={addGuest} class="h-12 rounded-md border border-violet-800 bg-violet-600 text-base font-bold text-white">
 								+ Гость
 							</button>
-							<button type="button" onclick={printCheck} class="h-12 rounded-md border border-slate-700 bg-slate-600 text-base font-bold text-white">
-								Печать
+							<button
+								type="button"
+								onclick={() => void printCheck()}
+								disabled={printBusy}
+								class="h-12 rounded-md border border-slate-700 bg-slate-600 text-base font-bold text-white disabled:opacity-60"
+							>
+								{printBusy ? '…' : 'Печать'}
 							</button>
 							<button
 								type="button"
@@ -892,30 +899,3 @@
 	</div>
 {/if}
 
-<div class="hidden print:block">
-	<article class="mx-auto max-w-[280px] text-black">
-		<p class="text-center text-lg font-bold">{hallName}</p>
-		<p class="text-center text-sm font-semibold">
-			{isDraft ? 'Новый заказ' : isClosed ? `Чек №${orderId}` : `Заказ №${orderId}`}
-		</p>
-		<p class="text-center text-xs">{printWhen()}</p>
-		<hr class="my-2 border-black" />
-		{#each guests as guest}
-			<p class="mt-2 text-sm font-bold">{guest.name}</p>
-			{#each items.filter((i) => i.guest_id === guest.id) as item}
-				<div class="flex justify-between gap-2 text-sm">
-					<span>{item.quantity}× {item.title}</span>
-					<span class="font-mono">{formatMoney(item.price_cents * item.quantity)}</span>
-				</div>
-			{/each}
-		{/each}
-		<hr class="my-2 border-black" />
-		<p class="flex justify-between text-base font-bold">
-			<span>Итого</span>
-			<span class="font-mono">{formatMoney(totalCents)}</span>
-		</p>
-		{#if hallQrPath}
-			<img src={imageUrl(hallQrPath)} alt="QR" class="mx-auto mt-4 h-80 w-80 object-contain" />
-		{/if}
-	</article>
-</div>
