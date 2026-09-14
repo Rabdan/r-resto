@@ -1,14 +1,12 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { broadcast } from '$lib/server/sse';
-import { loadPrecheck } from '$lib/server/orders';
+import { loadOrder, settleEmptyUnpaidGuests } from '$lib/server/orders';
+import { deviceHasRole } from '$lib/types';
 import type { RequestHandler } from './$types';
 
 function requireWaiter(locals: App.Locals) {
-	if (locals.device?.status !== 'active' || locals.device.role !== 'waiter') {
-		return false;
-	}
-	return true;
+	return locals.device?.status === 'active' && deviceHasRole(locals.device, 'waiter');
 }
 
 export const GET: RequestHandler = async ({ locals, url }) => {
@@ -17,17 +15,24 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	const locationId = locals.device!.locationId;
 	const tab = url.searchParams.get('tab') === 'closed' ? 'closed' : 'open';
 
-	if (tab === 'closed') {
-		const shift = db
-			.prepare(
-				`SELECT id FROM shifts WHERE location_id = ? AND status = 'open'
-				 UNION ALL
-				 SELECT id FROM shifts WHERE location_id = ? AND status = 'closed'
-				 ORDER BY id DESC LIMIT 1`
-			)
-			.get(locationId, locationId) as { id: number } | undefined;
+	const shiftOpen = !!(
+		db
+			.prepare(`SELECT id FROM shifts WHERE location_id = ? AND status = 'open' LIMIT 1`)
+			.get(locationId) as { id: number } | undefined
+	);
 
-		if (!shift) return json({ orders: [] });
+	if (tab === 'closed') {
+		const shift =
+			(db
+				.prepare(`SELECT id FROM shifts WHERE location_id = ? AND status = 'open' LIMIT 1`)
+				.get(locationId) as { id: number } | undefined) ??
+			(db
+				.prepare(
+					`SELECT id FROM shifts WHERE location_id = ? AND status = 'closed' ORDER BY id DESC LIMIT 1`
+				)
+				.get(locationId) as { id: number } | undefined);
+
+		if (!shift) return json({ orders: [], shiftOpen });
 
 		const rows = db
 			.prepare(
@@ -37,7 +42,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 				 JOIN users u ON u.id = o.waiter_id
 				 JOIN halls h ON h.id = o.hall_id
 				 WHERE o.location_id = ? AND o.status = 'closed' AND o.shift_id = ?
-				 ORDER BY o.closed_at DESC, o.id DESC`
+				 ORDER BY o.closed_at ASC, o.id ASC`
 			)
 			.all(locationId, shift.id) as Array<{
 			id: number;
@@ -56,7 +61,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 			...row,
 			guests: guestsStmt.all(row.id) as Array<{ name: string; payment_method: string | null }>
 		}));
-		return json({ orders });
+		return json({ orders, shiftOpen });
 	}
 
 	const rows = db
@@ -67,7 +72,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 			 JOIN users u ON u.id = o.waiter_id
 			 JOIN halls h ON h.id = o.hall_id
 			 WHERE o.location_id = ? AND o.status = 'open'
-			 ORDER BY o.id DESC`
+			 ORDER BY o.created_at ASC, o.id ASC`
 		)
 		.all(locationId) as Array<{
 		id: number;
@@ -82,12 +87,31 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	const guestsStmt = db.prepare(
 		`SELECT name FROM order_guests WHERE order_id = ? ORDER BY sort_order, id`
 	);
+	const readyStmt = db.prepare(
+		`SELECT ready_at FROM order_items WHERE order_id = ? AND status = 'ready'`
+	);
+	const unpaidStmt = db.prepare(
+		`SELECT COALESCE(SUM(oi.quantity * oi.price_cents), 0) AS n
+		 FROM order_items oi
+		 JOIN order_guests og ON og.id = oi.guest_id
+		 WHERE oi.order_id = ? AND og.is_paid = 0`
+	);
+	const previewStmt = db.prepare(
+		`SELECT title, quantity FROM order_items WHERE order_id = ? ORDER BY id LIMIT 2`
+	);
+	const oosStmt = db.prepare(
+		`SELECT COUNT(*) AS n FROM order_items WHERE order_id = ? AND status = 'out_of_stock'`
+	);
 	const orders = rows.map((row) => ({
 		...row,
-		guests: guestsStmt.all(row.id) as Array<{ name: string }>
+		guests: guestsStmt.all(row.id) as Array<{ name: string }>,
+		ready_at: (readyStmt.all(row.id) as Array<{ ready_at: string | null }>).map((r) => r.ready_at),
+		unpaid_cents: (unpaidStmt.get(row.id) as { n: number }).n,
+		preview: previewStmt.all(row.id) as Array<{ title: string; quantity: number }>,
+		out_of_stock_count: (oosStmt.get(row.id) as { n: number }).n
 	}));
 
-	return json({ orders });
+	return json({ orders, shiftOpen });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -180,7 +204,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	let changeCents = 0;
 	if (body.pay) {
 		payGuestIndex = Math.max(0, Math.floor(Number(body.pay.guestIndex) || 0));
-		payMethod = body.pay.method === 'cash' ? 'cash' : 'cashless';
+		if (body.pay.method !== 'cash' && body.pay.method !== 'cashless') {
+			return json({ error: 'invalid_method' }, { status: 400 });
+		}
+		payMethod = body.pay.method;
 		payAmount = resolvedItems
 			.filter((i) => i.guestIndex === payGuestIndex)
 			.reduce((sum, i) => sum + i.quantity * i.priceCents, 0);
@@ -246,7 +273,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				`UPDATE order_guests
 				 SET is_paid = 1, payment_method = ?, amount_cents = ?, cash_received_cents = ?, change_cents = ?, paid_at = datetime('now')
 				 WHERE id = ?`
-			).run(payMethod, payAmount, cashReceived, payMethod === 'cash' ? changeCents : 0, payGuestId);
+			)			.run(payMethod, payAmount, cashReceived, payMethod === 'cash' ? changeCents : 0, payGuestId);
+
+			settleEmptyUnpaidGuests(id);
 
 			const unpaid = db
 				.prepare(`SELECT COUNT(*) AS n FROM order_guests WHERE order_id = ? AND is_paid = 0`)
@@ -261,11 +290,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		return { id, changeCents };
 	})();
 
-	broadcast('PRECHECK_CREATED', { orderId: result.id, locationId });
-	const precheck = loadPrecheck(result.id, locationId);
-	if (precheck?.status === 'closed') {
-		broadcast('PRECHECK_CLOSED', { orderId: result.id, locationId });
+	broadcast('ORDER_CREATED', { orderId: result.id, locationId });
+	const order = loadOrder(result.id, locationId);
+	if (order?.status === 'closed') {
+		broadcast('ORDER_CLOSED', { orderId: result.id, locationId });
 	}
 
-	return json({ id: result.id, precheck, changeCents: result.changeCents }, { status: 201 });
+	return json({ id: result.id, order, changeCents: result.changeCents }, { status: 201 });
 };

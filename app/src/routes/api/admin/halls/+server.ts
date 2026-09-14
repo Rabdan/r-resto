@@ -13,7 +13,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 
 	const halls = db
 		.prepare(
-			`SELECT h.id, h.name, h.color_hex, h.sort_order, h.is_active, h.closed_at,
+			`SELECT h.id, h.name, h.color_hex, h.sort_order, h.is_active, h.closed_at, h.qr_image_path,
 			        (SELECT COUNT(*) FROM orders o WHERE o.hall_id = h.id) AS orders_count
 			 FROM halls h
 			 WHERE h.location_id = ?

@@ -1,10 +1,9 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { requireAdmin } from '$lib/server/admin';
+import { parsePosRolesBody, replaceDeviceRoles } from '$lib/server/devices';
 import { broadcast } from '$lib/server/sse';
 import type { RequestHandler } from './$types';
-
-const DEVICE_ROLES = ['waiter', 'kitchen'] as const;
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const denied = requireAdmin(locals);
@@ -14,22 +13,21 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		code?: string;
 		userId?: number;
 		role?: string;
+		roles?: string[];
 	};
 
 	const code = body.code?.trim();
 	const userId = Number(body.userId);
-	const role = body.role;
+	const roles = parsePosRolesBody(body);
 	if (!code || !userId) {
 		return json({ error: 'code and userId required' }, { status: 400 });
 	}
-	if (!role || !DEVICE_ROLES.includes(role as (typeof DEVICE_ROLES)[number])) {
+	if (!roles?.length) {
 		return json({ error: 'invalid_role' }, { status: 400 });
 	}
 
 	const user = db
-		.prepare(
-			`SELECT id FROM users WHERE id = ? AND is_active = 1 AND is_blocked = 0`
-		)
+		.prepare(`SELECT id FROM users WHERE id = ? AND is_active = 1 AND is_blocked = 0`)
 		.get(userId) as { id: number } | undefined;
 	if (!user) return json({ error: 'user not found' }, { status: 404 });
 
@@ -48,11 +46,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			`UPDATE devices
 			 SET assigned_user_id = @userId,
 			     location_id = @locationId,
-			     role = @role,
 			     status = 'active',
 			     updated_at = datetime('now')
 			 WHERE id = @id`
-		).run({ userId, locationId: locationRow.location_id, role, id: device.id });
+		).run({ userId, locationId: locationRow.location_id, id: device.id });
+		replaceDeviceRoles(device.id, roles);
 	})();
 
 	broadcast('DEVICE_ACTIVATED', { deviceId: device.id, userId }, device.device_uuid);

@@ -12,13 +12,18 @@ export const GET: RequestHandler = async () => {
 };
 
 export const POST: RequestHandler = async (event) => {
-	const body = (await event.request.json().catch(() => ({}))) as { pin?: string };
+	const body = (await event.request.json().catch(() => ({}))) as { pin?: string; userId?: number };
 	const pin = String(body.pin ?? '');
 	if (!pin) {
 		return json({ error: 'invalid' }, { status: 400 });
 	}
 
-	const admin = authenticateAdminByPin(pin);
+	const userId = body.userId != null ? Number(body.userId) : undefined;
+	if (userId != null && !Number.isFinite(userId)) {
+		return json({ error: 'invalid' }, { status: 400 });
+	}
+
+	const admin = authenticateAdminByPin(pin, userId);
 	if (!admin) {
 		return json({ error: 'invalid_pin' }, { status: 401 });
 	}

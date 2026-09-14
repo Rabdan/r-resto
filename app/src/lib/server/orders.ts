@@ -1,5 +1,6 @@
 import { db } from './db';
 import { broadcast } from './sse';
+import { deviceHasRole } from '$lib/types';
 
 export type OrderRow = {
 	id: number;
@@ -10,7 +11,7 @@ export type OrderRow = {
 	total_amount_cents: number;
 };
 
-export type PrecheckItem = {
+export type OrderItem = {
 	id: number;
 	guest_id: number;
 	menu_item_id: number | null;
@@ -19,9 +20,10 @@ export type PrecheckItem = {
 	quantity: number;
 	status: string;
 	is_custom: number;
+	ready_at: string | null;
 };
 
-export type PrecheckGuest = {
+export type OrderGuest = {
 	id: number;
 	name: string;
 	sort_order: number;
@@ -31,7 +33,7 @@ export type PrecheckGuest = {
 };
 
 export function waiterLocationId(locals: App.Locals): number | null {
-	if (locals.device?.status !== 'active' || locals.device.role !== 'waiter') return null;
+	if (locals.device?.status !== 'active' || !deviceHasRole(locals.device, 'waiter')) return null;
 	return locals.device.locationId;
 }
 
@@ -54,11 +56,11 @@ export function refreshOrderTotal(orderId: number): void {
 	).run(orderId, orderId);
 }
 
-export function loadPrecheck(orderId: number, locationId: number) {
+export function loadOrder(orderId: number, locationId: number) {
 	const order = db
 		.prepare(
-			`SELECT o.id, o.status, o.total_amount_cents, o.created_at,
-			        h.name AS hall_name, h.color_hex AS hall_color
+			`SELECT o.id, o.status, o.total_amount_cents, o.created_at, o.hall_id,
+			        h.name AS hall_name, h.color_hex AS hall_color, h.qr_image_path
 			 FROM orders o
 			 JOIN halls h ON h.id = o.hall_id
 			 WHERE o.id = ? AND o.location_id = ?`
@@ -69,8 +71,10 @@ export function loadPrecheck(orderId: number, locationId: number) {
 				status: string;
 				total_amount_cents: number;
 				created_at: string;
+				hall_id: number;
 				hall_name: string;
 				hall_color: string;
+				qr_image_path: string | null;
 		  }
 		| undefined;
 	if (!order) return null;
@@ -80,19 +84,19 @@ export function loadPrecheck(orderId: number, locationId: number) {
 			`SELECT id, name, sort_order, is_paid, payment_method, amount_cents
 			 FROM order_guests WHERE order_id = ? ORDER BY sort_order, id`
 		)
-		.all(orderId) as PrecheckGuest[];
+		.all(orderId) as OrderGuest[];
 	const items = db
 		.prepare(
-			`SELECT id, guest_id, menu_item_id, title, price_cents, quantity, status, is_custom
+			`SELECT id, guest_id, menu_item_id, title, price_cents, quantity, status, is_custom, ready_at
 			 FROM order_items WHERE order_id = ? ORDER BY id`
 		)
-		.all(orderId) as PrecheckItem[];
+		.all(orderId) as OrderItem[];
 
 	return { ...order, guests, items };
 }
 
 export function notifyOrder(orderId: number, locationId: number): void {
-	broadcast('PRECHECK_UPDATED', { orderId, locationId });
+	broadcast('ORDER_UPDATED', { orderId, locationId });
 }
 
 export function guestItemsTotal(orderId: number, guestId: number): number {
@@ -103,6 +107,21 @@ export function guestItemsTotal(orderId: number, guestId: number): number {
 		)
 		.get(orderId, guestId) as { total: number };
 	return row.total;
+}
+
+/** Пустые неоплаченные гости не должны блокировать закрытие заказа. */
+export function settleEmptyUnpaidGuests(orderId: number): void {
+	const guests = db
+		.prepare(`SELECT id FROM order_guests WHERE order_id = ? AND is_paid = 0`)
+		.all(orderId) as Array<{ id: number }>;
+	const mark = db.prepare(
+		`UPDATE order_guests
+		 SET is_paid = 1, amount_cents = 0, paid_at = datetime('now')
+		 WHERE id = ? AND is_paid = 0`
+	);
+	for (const guest of guests) {
+		if (guestItemsTotal(orderId, guest.id) <= 0) mark.run(guest.id);
+	}
 }
 
 export function mergeOrInsertHeld(opts: {

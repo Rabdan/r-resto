@@ -1,5 +1,5 @@
 import { goto } from '$app/navigation';
-import type { DeviceSession, UserRole } from '$lib/types';
+import { deviceHasRole, type DeviceSession, type UserRole } from '$lib/types';
 
 export const POS_SESSION_KEY = 'pos-session';
 
@@ -9,10 +9,10 @@ export type PosSseEventName =
 	| 'DEVICE_ACTIVATED'
 	| 'DEVICE_BLOCKED'
 	| 'MENU_UPDATED'
-	| 'PRECHECK_CREATED'
-	| 'PRECHECK_UPDATED'
-	| 'PRECHECK_CANCELLED'
-	| 'PRECHECK_CLOSED'
+	| 'ORDER_CREATED'
+	| 'ORDER_UPDATED'
+	| 'ORDER_CANCELLED'
+	| 'ORDER_CLOSED'
 	| 'ITEM_STATUS_CHANGED'
 	| 'SHIFT_OPENED'
 	| 'SHIFT_CLOSED';
@@ -29,10 +29,10 @@ const SSE_EVENTS: PosSseEventName[] = [
 	'DEVICE_ACTIVATED',
 	'DEVICE_BLOCKED',
 	'MENU_UPDATED',
-	'PRECHECK_CREATED',
-	'PRECHECK_UPDATED',
-	'PRECHECK_CANCELLED',
-	'PRECHECK_CLOSED',
+	'ORDER_CREATED',
+	'ORDER_UPDATED',
+	'ORDER_CANCELLED',
+	'ORDER_CLOSED',
 	'ITEM_STATUS_CHANGED',
 	'SHIFT_OPENED',
 	'SHIFT_CLOSED'
@@ -51,6 +51,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let backoffMs = 1000;
 let generation = 0;
 let running = false;
+let currentRole: UserRole | null = null;
 
 export async function refreshMe(): Promise<DeviceSession | null> {
 	try {
@@ -74,13 +75,14 @@ export async function refreshMe(): Promise<DeviceSession | null> {
 export async function startPosSession(role: UserRole): Promise<void> {
 	const gen = ++generation;
 	running = true;
+	currentRole = role;
 	posSession.status = 'loading';
 	posSession.error = null;
 
 	const device = await refreshMe();
 	if (gen !== generation) return;
 
-	if (device?.status !== 'active' || device.role !== role) {
+	if (device?.status !== 'active' || !deviceHasRole(device, role)) {
 		posSession.status = 'denied';
 		await goto('/');
 		return;
@@ -93,6 +95,7 @@ export async function startPosSession(role: UserRole): Promise<void> {
 export function stopPosSession(): void {
 	generation += 1;
 	running = false;
+	currentRole = null;
 	posSession.status = 'idle';
 	clearReconnect();
 	source?.close();
@@ -129,24 +132,37 @@ function connectEvents(): void {
 	if (!running) return;
 	clearReconnect();
 	source?.close();
-	source = new EventSource('/api/events');
-	source.onopen = () => {
+	const es = new EventSource('/api/events');
+	source = es;
+	es.onopen = () => {
 		backoffMs = 1000;
 	};
 	for (const name of SSE_EVENTS) {
-		source.addEventListener(name, (ev) => {
+		es.addEventListener(name, (ev) => {
+			if (source !== es) return;
 			const message = ev as MessageEvent;
 			if (name === 'DEVICE_BLOCKED') {
 				posSession.status = 'denied';
 				posSession.device = null;
 				void goto('/');
 			}
+			if (name === 'DEVICE_ACTIVATED') {
+				void refreshMe().then((device) => {
+					if (!running || !currentRole) return;
+					if (device?.status !== 'active' || !deviceHasRole(device, currentRole)) {
+						posSession.status = 'denied';
+						void goto('/');
+					}
+				});
+			}
 			dispatch(name, message);
 		});
 	}
-	source.onerror = () => {
-		source?.close();
-		source = undefined;
+	es.onerror = () => {
+		if (source !== es) return;
+		clearReconnect();
+		es.close();
+		if (source === es) source = undefined;
 		if (!running) return;
 		reconnectTimer = setTimeout(() => {
 			backoffMs = Math.min(backoffMs * 2, 15000);

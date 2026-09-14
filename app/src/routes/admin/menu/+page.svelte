@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { CURRENCIES, DEFAULT_CURRENCY } from '$lib/currency';
 	import { formatMoney, getCurrency, parseMoney } from '$lib/money';
+	import AdminSwitch from '$lib/components/admin/AdminSwitch.svelte';
 
 	type Item = {
 		id: number;
@@ -321,7 +322,7 @@
 	<button
 		type="button"
 		onclick={openCreateCategory}
-		class="h-12 w-full rounded-md bg-emerald-600 font-semibold text-white"
+		class="h-10 w-full rounded-md bg-emerald-600 text-sm font-semibold text-white"
 	>
 		+ Добавить категорию
 	</button>
@@ -449,7 +450,7 @@
 			<p class="text-lg font-bold">{catModal.mode === 'create' ? 'Новая категория' : 'Категория'}</p>
 			<label class="mt-3 block text-sm text-slate-700">
 				Название
-				<input bind:value={catModal.name} class="mt-1 h-12 w-full rounded-md bg-white px-3" />
+				<input bind:value={catModal.name} class="mt-1 h-10 w-full rounded-md bg-white px-3" />
 			</label>
 			<p class="mt-3 text-sm text-slate-700">Цвет</p>
 			<div class="mt-2 flex flex-wrap gap-2">
@@ -473,8 +474,8 @@
 				</label>
 			</div>
 			<div class="mt-4 grid grid-cols-2 gap-2">
-				<button type="button" class="h-12 rounded-md bg-white" onclick={() => (catOpen = false)}>Отмена</button>
-				<button type="button" class="h-12 rounded-md bg-emerald-600 font-semibold text-white" onclick={() => saveCategory()}>
+				<button type="button" class="h-10 rounded-md bg-white text-sm" onclick={() => (catOpen = false)}>Отмена</button>
+				<button type="button" class="h-10 rounded-md bg-emerald-600 text-sm font-semibold text-white" onclick={() => saveCategory()}>
 					Сохранить
 				</button>
 			</div>
@@ -526,14 +527,14 @@
 
 			<label class="mt-3 block text-sm text-slate-700">
 				Наименование
-				<input bind:value={itemModal.title} class="mt-1 h-12 w-full rounded-md bg-white px-3" />
+				<input bind:value={itemModal.title} class="mt-1 h-10 w-full rounded-md bg-white px-3" />
 			</label>
 			<label class="mt-3 block text-sm text-slate-700">
 				Цена
 				<input
 					bind:value={itemModal.price}
 					inputmode="decimal"
-					class="mt-1 h-12 w-full rounded-md bg-white px-3"
+					class="mt-1 h-10 w-full rounded-md bg-white px-3"
 					placeholder="0"
 				/>
 			</label>
@@ -545,20 +546,17 @@
 				></textarea>
 			</label>
 
-			<button
-				type="button"
-				onclick={() => (itemModal.isAvailable = !itemModal.isAvailable)}
-				class="mt-3 flex h-12 w-full items-center justify-between rounded-md px-4 {itemModal.isAvailable
-					? 'bg-emerald-600 text-white'
-					: 'bg-rose-600 text-white'}"
-			>
-				<span class="font-semibold">{itemModal.isAvailable ? 'В наличии' : 'Стоп-лист'}</span>
-				<span class="text-sm opacity-80">{itemModal.isAvailable ? 'да' : 'нет'}</span>
-			</button>
+			<div class="mt-3">
+				<AdminSwitch
+					label={itemModal.isAvailable ? 'В наличии' : 'Стоп-лист'}
+					checked={itemModal.isAvailable}
+					onchange={(next) => (itemModal.isAvailable = next)}
+				/>
+			</div>
 
 			<div class="mt-4 grid grid-cols-2 gap-2">
-				<button type="button" class="h-12 rounded-md bg-white" onclick={() => (itemOpen = false)}>Отмена</button>
-				<button type="button" class="h-12 rounded-md bg-emerald-600 font-semibold text-white" onclick={() => saveItem()}>
+				<button type="button" class="h-10 rounded-md bg-white text-sm" onclick={() => (itemOpen = false)}>Отмена</button>
+				<button type="button" class="h-10 rounded-md bg-emerald-600 text-sm font-semibold text-white" onclick={() => saveItem()}>
 					Сохранить
 				</button>
 			</div>

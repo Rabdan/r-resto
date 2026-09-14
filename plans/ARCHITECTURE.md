@@ -9,7 +9,7 @@ POS / KDS / админка одним Node-процессом. Код: [`app/`](
 - **SvelteKit 2** + **Svelte 5** (runes), TypeScript.
 - **Адаптер:** `@sveltejs/adapter-node` (не serverless, не static).
 - **Клиент:** одна SPA (`ssr = false` в корневом layout). Один origin с API. Официант и кухня — отдельные оболочки (`waiter/+layout`, `kitchen/+layout`), не отдельные сборки.
-- **PWA:** одно устанавливаемое приложение. `static/manifest.webmanifest` (`start_url` / `scope` `/`), PNG 192/512 + maskable, `apple-touch-icon.png`, `src/service-worker.ts`. Навигации — network-first; `/_app/immutable/*` — cache-first; остальной static — stale-while-revalidate. `/api/*` и SSE всегда из сети. Меню на клиенте обновляется событием `MENU_UPDATED`.
+- **PWA:** два манифеста, один service worker. POS: `static/manifest.webmanifest` (`id`/`start_url`/`scope` `/`). Админ: `static/admin.webmanifest` (`id`/`start_url`/`scope` `/admin`). `app.html` подставляет манифест по pathname. PNG 192/512 + maskable, `apple-touch-icon.png`, `src/service-worker.ts`. Навигации — network-first; `/_app/immutable/*` — cache-first; остальной static — stale-while-revalidate. `/api/*` и SSE всегда из сети. Меню на клиенте обновляется событием `MENU_UPDATED`.
 - **БД:** SQLite, `better-sqlite3`, **без ORM**. WAL.
 - **Realtime:** Server-Sent Events (`GET /api/events`). REST пишет, SSE рассылает.
 - **Отчёты:** ExcelJS на сервере.
@@ -17,10 +17,13 @@ POS / KDS / админка одним Node-процессом. Код: [`app/`](
 
 ```mermaid
 flowchart LR
-  PWA["R-resto PWA"] --> Bind["/ привязка"]
-  Bind -->|"waiter"| Waiter["/waiter оболочка"]
-  Bind -->|"kitchen"| Kitchen["/kitchen оболочка"]
-  PWA --> Admin["/admin"]
+  PosPwa["PWA R-resto"] --> Home["/"]
+  Home -->|"одна роль"| Waiter["/waiter"]
+  Home -->|"одна роль"| Kitchen["/kitchen"]
+  Home -->|"две роли"| Pick["выбор роли"]
+  Pick --> Waiter
+  Pick --> Kitchen
+  AdminPwa["PWA Админ"] --> Admin["/admin PIN"]
   Waiter --> SK["SvelteKit Node"]
   Kitchen --> SK
   Admin --> SK
@@ -36,11 +39,11 @@ flowchart LR
 
 1. Браузер получает cookie `device_uuid` (hooks).
 2. Если устройства нет — `pending`, на экране 6-значный `device_code` (`481-902`).
-3. Админ вводит код, назначает точку и пользователя с ролью `waiter` или `kitchen` (не admin).
-4. Статус `active`. Клиент по SSE `DEVICE_ACTIVATED` уходит на `/waiter` или `/kitchen`.
+3. Админ вводит код, назначает пользователя и роли устройства: официант и/или кухня (`device_roles`, можно обе).
+4. Статус `active`. Если роль одна — клиент по SSE `DEVICE_ACTIVATED` сразу на `/waiter` или `/kitchen`. Если обе — остаётся на `/` для выбора. С POS при двух ролях можно вернуться на главную.
 5. `suspended` / `terminated` → SSE `DEVICE_BLOCKED` → экран привязки.
 
-**Админ** — не устройство, а PIN:
+**Админ** — отдельный PWA (`/admin`), вход по PIN, не привязка устройства:
 
 1. Открывает `/admin`.
 2. Если админов несколько — выбирает имя, затем цифровой пароль на нумпаде (4–8 цифр).
@@ -48,7 +51,7 @@ flowchart LR
 4. Суперадмин (`users.is_superadmin`): имя «Администратор», пароль по умолчанию **1708**. Хеш `pin_hash` через scrypt. Нельзя удалить и снять роль.
 5. При создании нового админа обязательно задаётся цифровой PIN.
 
-Один сотрудник зала может быть на нескольких устройствах. Официант видит пречеки своей точки; фильтр по залу — в шапке.
+Один сотрудник зала может быть на нескольких устройствах. Официант видит заказы своей точки; фильтр по залу — в шапке.
 
 ## 3. Доменная модель
 
@@ -70,13 +73,13 @@ erDiagram
 | Сущность | Смысл |
 | --- | --- |
 | `locations` | Торговая точка (заведение) |
-| `halls` | Зал внутри точки, `color_hex` для шапки официанта |
+| `halls` | Зал внутри точки, `color_hex` для шапки официанта, `qr_image_path` для безнала и печати |
 | `users` | `waiter` / `kitchen` / `admin`; у админа `pin_hash`, у суперадмина `is_superadmin` |
 | `admin_sessions` | Сессия PIN-входа, cookie `admin_session` |
 | `devices` | Телефон/планшет, код, uuid, статус |
 | `menu_categories`, `menu_items` | Справочник; `is_available` = стоп-лист; `image_path` |
 | `shifts` | Кассовая смена точки |
-| `orders` | Пречек: `open` / `closed` / `cancelled` |
+| `orders` | Заказ: `open` / `closed` / `cancelled` |
 | `order_guests` | Гости сплита, оплата каждого |
 | `order_items` | Позиции: цена зафиксирована; статус кухни |
 | `expenses` | Расходы смены: `shift_id`, `payment_method` (`cash` / `cashless`), сумма, примечание |
@@ -87,14 +90,16 @@ erDiagram
 | --- | --- | --- |
 | `held` | официант набрал, ещё не отправил | не виден |
 | `pending` | «На кухню» | карточка / строка |
-| `ready` | кухня «Готово» | зелёный маркер |
+| `ready` | кухня двойной тап «готово» (`ready_at`) | зелёная строка сразу; официант видит через 10 с |
 | `out_of_stock` | кухня «Нет блюда» | красный, алерт официанту |
 
-Кухня не видит `held`. Официант не удаляет `pending+` (только админ отменяет пречек).
+`order_items.ready_at` — момент, когда кухня поставила `ready`. Официант показывает «Готов» и зелёную точку в списке только после 10 секунд. Повторный двойной тап на кухне возвращает `pending` и сбрасывает `ready_at`.
 
-### Закрытие пречека
+Кухня не видит `held`. Официант не удаляет `pending+` (только админ отменяет заказ). KDS: светлая тема, новые сверху, состав без цен, фильтр зала («Все» + залы устройства, `localStorage`). Карточка пропадает при `closed` / `cancelled`.
 
-`orders.status = closed` только когда **все** `order_guests.is_paid = 1`. Частичная оплата оставляет пречек в активных. Отмена — только админ, с обязательной причиной; SSE `PRECHECK_CANCELLED` снимает карточку с KDS.
+### Закрытие заказа
+
+`orders.status = closed` только когда **все** `order_guests.is_paid = 1`. Частичная оплата оставляет заказ в активных. Отмена — только админ, с обязательной причиной; SSE `ORDER_CANCELLED` снимает карточку с KDS.
 
 ## 4. SSE-события
 
@@ -104,8 +109,8 @@ erDiagram
 | --- | --- | --- |
 | `DEVICE_ACTIVATED` / `DEVICE_BLOCKED` | админ | это устройство |
 | `MENU_UPDATED` | админ (CRUD / стоп-лист) | официанты точки |
-| `PRECHECK_CREATED` / `PRECHECK_UPDATED` | официант | кухня, админ, другие официанты точки |
-| `PRECHECK_CANCELLED` / `PRECHECK_CLOSED` | админ / оплата | официант, кухня |
+| `ORDER_CREATED` / `ORDER_UPDATED` | официант | кухня, админ, другие официанты точки |
+| `ORDER_CANCELLED` / `ORDER_CLOSED` | админ / оплата | официант, кухня |
 | `ITEM_STATUS_CHANGED` | кухня | официант |
 | `SHIFT_OPENED` / `SHIFT_CLOSED` | админ | все терминалы точки |
 
@@ -123,13 +128,13 @@ erDiagram
 - `GET /api/admin/me`
 - `POST /api/admin/devices/bind` — код + waiter/kitchen
 - `GET|POST /api/orders`, `POST /api/orders/:id/items`, split, pay, fire
-- `GET /api/kds` — очередь кухни (открытые пречеки с pending+); экран `/kitchen` показывает FIFO-список (read-only, без кнопок статуса)
-- `PATCH /api/kds/items/:id` — ready / out_of_stock (скелет API; кнопки KDS ещё не в UI)
+- `GET /api/kds` — очередь кухни (открытые заказы с pending/ready, новые сверху, позиции без цен)
+- `PATCH /api/kds/items/:id` — `{ status: 'ready' | 'pending' }`
 - `GET|POST /api/menu`, upload картинки
-- `GET|POST /api/shifts`, close + Z (открытие смены — сессия админа; закрытие — только без открытых пречеков)
+- `GET|POST /api/shifts`, close + Z (открытие смены — сессия админа; закрытие — только без открытых заказов)
 - `GET /api/admin/shifts` — текущая и закрытые смены с чеками, выручкой и расходами
-- `GET /api/admin/prechecks` — чеки открытой смены
-- `POST /api/admin/prechecks/:id/cancel` — `{ reason }` обязательно
+- `GET /api/admin/orders` — заказы и чеки открытой смены
+- `POST /api/admin/orders/:id/cancel` — `{ reason }` обязательно
 - `POST /api/admin/expenses`, `DELETE /api/admin/expenses/:id` — расходы открытой смены
 - `GET /api/admin/analytics?from&to` — товары vs прошлый период той же длины
 - `GET /api/admin/export?from&to` — xlsx (Чеки, Товары, Сравнение, Расходы)
@@ -147,7 +152,9 @@ src/
     money.ts
     types.ts
     client/pos-session.svelte.ts  # device + один SSE для POS
-    components/            # PosShell, PosRoleGate, плитки, шторка
+    components/
+      PosShell, PosRoleGate, PinPad, AdminNav
+      waiter/              # OrderItems, MenuSheet, PayDialog
     server/
       paths.ts
       sse.ts
@@ -157,13 +164,15 @@ src/
   routes/
     +layout.ts             # ssr = false, currency в data
     +page.svelte           # привязка
-    waiter/+layout.svelte  # гард роли waiter, тёмная оболочка
-    kitchen/+layout.svelte # гард роли kitchen, тёмная оболочка
-    admin/{devices,menu,shift,analytics,finance}
+    waiter/+layout.svelte  # гард роли waiter, светлая оболочка
+    kitchen/+layout.svelte # гард роли kitchen, светлая оболочка
+    admin/{devices,menu,shift,analytics,settings}
     api/...
 ```
 
-PWA-файлы в `app/static/`: `manifest.webmanifest`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png`, SVG-исходники иконок.
+PWA-файлы в `app/static/`: `manifest.webmanifest` (POS), `admin.webmanifest` (админ), `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png`, SVG-исходники иконок.
+
+Официант: `/waiter` — список заказов/чеков по возрастанию времени. `/waiter/new` и `/waiter/{id}` — позиции на экране (`OrderItems`), меню в нижней шторке (`MenuSheet`) до строки итогов. Новый заказ открывается с меню; существующий и закрытый — со свёрнутой шторкой. Оплата — `PayDialog` с переключателем нал/безнал.
 
 ## 7. Данные и Docker
 
@@ -176,7 +185,7 @@ PWA-файлы в `app/static/`: `manifest.webmanifest`, `icon-192.png`, `icon-5
 ## 8. Фазы реализации UI
 
 1. Устройства + SSE + редирект роли (каркас уже есть).
-2. Официант: список, плитки, шторка, гости/сплит, fire, оплата.
+2. Официант: список (старые сверху), экран позиций заказа/чека, шторка меню снизу, гости/сплит, fire, оплата.
 3. KDS.
 4. Админ: устройства, меню/uploads, отмена, смена, Excel/P&L.
-5. PWA: одно приложение, PNG-иконки, standalone, SW без кэша API; жесты официанта в браузере.
+5. PWA: два манифеста (POS и админ), PNG-иконки, standalone, SW без кэша API; жесты официанта в браузере.

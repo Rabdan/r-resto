@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import {
 	getOpenOrder,
-	loadPrecheck,
+	loadOrder,
 	mergeOrInsertHeld,
 	notifyOrder,
 	refreshOrderTotal,
@@ -80,5 +80,5 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	}
 
 	notifyOrder(orderId, locationId);
-	return json({ precheck: loadPrecheck(orderId, locationId) });
+	return json({ order: loadOrder(orderId, locationId) });
 };

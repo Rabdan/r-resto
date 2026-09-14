@@ -1,12 +1,16 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { roleHome, type DeviceSession } from '$lib/types';
+	import { posRolesOf, roleHome, type DeviceSession } from '$lib/types';
 	import logo from '$lib/assets/logo.svg';
 
 	let device = $state<DeviceSession | null>(null);
 	let error = $state<string | null>(null);
 	let source: EventSource | undefined;
+	let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+	let running = false;
+
+	const roles = $derived(posRolesOf(device));
 
 	async function refresh() {
 		let deviceCode = '';
@@ -26,30 +30,49 @@
 		}
 		const data = (await res.json()) as { device: DeviceSession | null };
 		device = data.device;
-		if (device?.status === 'active' && (device.role === 'waiter' || device.role === 'kitchen')) {
-			await goto(roleHome(device.role));
+		const nextRoles = posRolesOf(data.device);
+		if (data.device?.status === 'active' && nextRoles.length === 1) {
+			await goto(roleHome(nextRoles[0]));
 		}
 	}
 
 	function connectEvents() {
-		source = new EventSource('/api/events');
-		source.addEventListener('DEVICE_ACTIVATED', () => {
+		if (!running) return;
+		if (reconnectTimer !== undefined) {
+			clearTimeout(reconnectTimer);
+			reconnectTimer = undefined;
+		}
+		source?.close();
+		const es = new EventSource('/api/events');
+		source = es;
+		es.addEventListener('DEVICE_ACTIVATED', () => {
+			if (source !== es) return;
 			void refresh();
 		});
-		source.addEventListener('DEVICE_BLOCKED', () => {
+		es.addEventListener('DEVICE_BLOCKED', () => {
+			if (source !== es) return;
 			device = null;
 			void goto('/');
 		});
-		source.onerror = () => {
-			source?.close();
-			setTimeout(connectEvents, 3000);
+		es.onerror = () => {
+			if (source !== es) return;
+			es.close();
+			if (source === es) source = undefined;
+			if (!running) return;
+			reconnectTimer = setTimeout(connectEvents, 3000);
 		};
 	}
 
 	onMount(() => {
+		running = true;
 		void refresh();
 		connectEvents();
-		return () => source?.close();
+		return () => {
+			running = false;
+			if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+			source?.close();
+			source = undefined;
+		};
 	});
 </script>
 
@@ -68,9 +91,28 @@
 				<span class="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span>
 				Ожидание подтверждения
 			</p>
+		{:else if device?.status === 'active' && roles.length > 1}
+			<p class="mt-4 text-slate-700">Выбери роль</p>
+			<div class="mt-4 grid gap-2">
+				{#if roles.includes('waiter')}
+					<a
+						href="/waiter"
+						class="flex h-12 items-center justify-center rounded-md bg-emerald-600 text-base font-semibold text-white"
+					>
+						Официант
+					</a>
+				{/if}
+				{#if roles.includes('kitchen')}
+					<a
+						href="/kitchen"
+						class="flex h-12 items-center justify-center rounded-md bg-slate-800 text-base font-semibold text-white"
+					>
+						Кухня
+					</a>
+				{/if}
+			</div>
 		{:else}
 			<p class="mt-6 text-slate-500">Подключение…</p>
 		{/if}
-		<a href="/admin" class="mt-8 block text-sm text-slate-500">Вход администратора</a>
 	</div>
 </main>

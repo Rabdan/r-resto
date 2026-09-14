@@ -13,7 +13,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	if (device?.id) {
 		halls = db
 			.prepare(
-				`SELECT h.id, h.name, h.color_hex, h.sort_order
+				`SELECT h.id, h.name, h.color_hex, h.sort_order, h.qr_image_path
 				 FROM halls h
 				 WHERE h.location_id = ?
 				   AND h.is_active = 1
@@ -27,7 +27,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	} else {
 		halls = db
 			.prepare(
-				`SELECT id, name, color_hex, sort_order
+				`SELECT id, name, color_hex, sort_order, qr_image_path
 				 FROM halls
 				 WHERE location_id = ? AND is_active = 1
 				 ORDER BY sort_order, id`

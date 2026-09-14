@@ -19,7 +19,7 @@ export type ZReport = {
 export type ShiftItem = { title: string; quantity: number; price_cents: number; status: string };
 export type ShiftGuest = { name: string; is_paid: number };
 
-export type OpenPrecheck = {
+export type OpenOrder = {
 	id: number;
 	created_at: string;
 	waiter_name: string;
@@ -29,7 +29,7 @@ export type OpenPrecheck = {
 	guests: ShiftGuest[];
 };
 
-export type ClosedPrecheck = {
+export type ClosedCheck = {
 	id: number;
 	created_at: string;
 	closed_at: string | null;
@@ -38,7 +38,7 @@ export type ClosedPrecheck = {
 	total_cents: number;
 };
 
-export type CancelledPrecheck = {
+export type CancelledOrder = {
 	id: number;
 	created_at: string;
 	cancelled_at: string | null;
@@ -63,9 +63,9 @@ export type ShiftRow = {
 	expenses_cents: number;
 	net_cents: number;
 	expenses: ShiftExpense[];
-	open: OpenPrecheck[];
-	closed_prechecks: ClosedPrecheck[];
-	cancelled: CancelledPrecheck[];
+	open: OpenOrder[];
+	closed_checks: ClosedCheck[];
+	cancelled: CancelledOrder[];
 };
 
 function shiftPayments(
@@ -104,11 +104,11 @@ function openOrdersCount(db: Database.Database, shiftId: number): number {
 	);
 }
 
-export function loadPrechecksForShift(
+export function loadOrdersForShift(
 	db: Database.Database,
 	locationId: number,
 	shiftId: number
-): { open: OpenPrecheck[]; closed_prechecks: ClosedPrecheck[]; cancelled: CancelledPrecheck[] } {
+): { open: OpenOrder[]; closed_checks: ClosedCheck[]; cancelled: CancelledOrder[] } {
 	const openRows = db
 		.prepare(
 			`SELECT o.id, o.created_at, u.name AS waiter_name, h.name AS hall_name,
@@ -121,7 +121,7 @@ export function loadPrechecksForShift(
 			 WHERE o.location_id = ? AND o.shift_id = ? AND o.status = 'open'
 			 ORDER BY o.created_at ASC`
 		)
-		.all(locationId, shiftId) as Array<Omit<OpenPrecheck, 'items' | 'guests'>>;
+		.all(locationId, shiftId) as Array<Omit<OpenOrder, 'items' | 'guests'>>;
 
 	const itemsStmt = db.prepare(
 		`SELECT title, quantity, price_cents, status FROM order_items WHERE order_id = ? ORDER BY id`
@@ -149,9 +149,9 @@ export function loadPrechecksForShift(
 			 WHERE o.location_id = ? AND o.shift_id = ? AND o.status = 'cancelled'
 			 ORDER BY o.cancelled_at DESC`
 		)
-		.all(locationId, shiftId) as CancelledPrecheck[];
+		.all(locationId, shiftId) as CancelledOrder[];
 
-	const closed_prechecks = db
+	const closed_checks = db
 		.prepare(
 			`SELECT o.id, o.created_at, o.closed_at, u.name AS waiter_name, h.name AS hall_name,
 			        COALESCE((
@@ -163,9 +163,9 @@ export function loadPrechecksForShift(
 			 WHERE o.location_id = ? AND o.shift_id = ? AND o.status = 'closed'
 			 ORDER BY o.closed_at DESC`
 		)
-		.all(locationId, shiftId) as ClosedPrecheck[];
+		.all(locationId, shiftId) as ClosedCheck[];
 
-	return { open, closed_prechecks, cancelled };
+	return { open, closed_checks, cancelled };
 }
 
 function buildZReport(
@@ -262,10 +262,10 @@ export function listShifts(db: Database.Database, locationId: number): ShiftRow[
 		const revenue_cents = payments.cash_cents + payments.cashless_cents;
 		const expenses = listExpensesForShift(db, s.id);
 		const expenses_cents = expensesTotalForShift(db, s.id);
-		const prechecks =
+		const shiftOrders =
 			s.status === 'open'
-				? loadPrechecksForShift(db, locationId, s.id)
-				: { open: [], closed_prechecks: [], cancelled: [] };
+				? loadOrdersForShift(db, locationId, s.id)
+				: { open: [], closed_checks: [], cancelled: [] };
 
 		return {
 			id: s.id,
@@ -282,9 +282,9 @@ export function listShifts(db: Database.Database, locationId: number): ShiftRow[
 			expenses_cents,
 			net_cents: revenue_cents - expenses_cents,
 			expenses,
-			open: prechecks.open,
-			closed_prechecks: prechecks.closed_prechecks,
-			cancelled: prechecks.cancelled
+			open: shiftOrders.open,
+			closed_checks: shiftOrders.closed_checks,
+			cancelled: shiftOrders.cancelled
 		};
 	});
 }
@@ -303,7 +303,7 @@ export function closeOpenShift(
 		.get(locationId) as { id: number } | undefined;
 	if (!shift) return { error: 'no_open_shift' };
 
-	if (openOrdersCount(db, shift.id) > 0) return { error: 'open_prechecks' };
+	if (openOrdersCount(db, shift.id) > 0) return { error: 'open_orders' };
 
 	const z = buildZReport(db, shift.id);
 	const zId = db.transaction(() => {

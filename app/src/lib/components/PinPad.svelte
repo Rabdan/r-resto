@@ -25,7 +25,7 @@
 			<button
 				type="button"
 				onclick={() => press(key)}
-				class="h-16 rounded bg-slate-200 text-2xl font-bold text-slate-900 active:bg-slate-300"
+				class="h-16 rounded-md border border-slate-300 bg-slate-200 text-2xl font-bold text-slate-900 active:bg-slate-300"
 			>
 				{key === 'del' ? '⌫' : key}
 			</button>

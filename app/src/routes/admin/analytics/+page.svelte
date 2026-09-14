@@ -123,18 +123,18 @@
 	<div class="grid grid-cols-2 gap-2">
 		<label class="text-sm text-slate-500">
 			С
-			<input type="date" bind:value={from} class="mt-1 h-12 w-full rounded-md bg-white px-3 text-slate-900" />
+			<input type="date" bind:value={from} class="mt-1 h-10 w-full rounded-md bg-white px-3 text-slate-900" />
 		</label>
 		<label class="text-sm text-slate-500">
 			По
-			<input type="date" bind:value={to} class="mt-1 h-12 w-full rounded-md bg-white px-3 text-slate-900" />
+			<input type="date" bind:value={to} class="mt-1 h-10 w-full rounded-md bg-white px-3 text-slate-900" />
 		</label>
 	</div>
 	<button
 		type="button"
 		onclick={load}
 		disabled={loading}
-		class="h-12 w-full rounded-md bg-white font-medium disabled:opacity-50"
+		class="h-10 w-full rounded-md bg-white text-sm font-medium disabled:opacity-50"
 	>
 		Пересчитать
 	</button>
@@ -147,7 +147,7 @@
 			<button
 				type="button"
 				onclick={() => (tab = tabItem.key)}
-				class="h-12 rounded-md text-xs font-semibold {tab === tabItem.key
+				class="h-10 rounded-md text-xs font-semibold {tab === tabItem.key
 					? 'bg-emerald-600 text-white'
 					: 'bg-white text-slate-700'}"
 			>

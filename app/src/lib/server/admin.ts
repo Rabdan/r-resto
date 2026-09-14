@@ -62,14 +62,23 @@ export function listLoginAdmins(): Array<{ id: number; name: string }> {
 		.all() as Array<{ id: number; name: string }>;
 }
 
-export function authenticateAdminByPin(pin: string): AdminSession | null {
+export function authenticateAdminByPin(pin: string, userId?: number): AdminSession | null {
 	if (!isValidPin(pin)) return null;
-	const rows = getDb()
-		.prepare(
-			`SELECT id, name, pin_hash, is_superadmin FROM users
-			 WHERE role = 'admin' AND is_active = 1 AND is_blocked = 0`
-		)
-		.all() as Array<{ id: number; name: string; pin_hash: string | null; is_superadmin: number }>;
+	const rows = (
+		userId != null
+			? getDb()
+					.prepare(
+						`SELECT id, name, pin_hash, is_superadmin FROM users
+						 WHERE role = 'admin' AND is_active = 1 AND is_blocked = 0 AND id = ?`
+					)
+					.all(userId)
+			: getDb()
+					.prepare(
+						`SELECT id, name, pin_hash, is_superadmin FROM users
+						 WHERE role = 'admin' AND is_active = 1 AND is_blocked = 0`
+					)
+					.all()
+	) as Array<{ id: number; name: string; pin_hash: string | null; is_superadmin: number }>;
 
 	for (const row of rows) {
 		if (!row.pin_hash) continue;

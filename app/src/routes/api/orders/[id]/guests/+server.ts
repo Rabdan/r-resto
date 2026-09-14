@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { getOpenOrder, loadPrecheck, notifyOrder, waiterLocationId } from '$lib/server/orders';
+import { getOpenOrder, loadOrder, notifyOrder, waiterLocationId } from '$lib/server/orders';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, params }) => {
@@ -21,5 +21,5 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 		.run(orderId, name, next.n);
 
 	notifyOrder(orderId, locationId);
-	return json({ guestId: Number(info.lastInsertRowid), precheck: loadPrecheck(orderId, locationId) }, { status: 201 });
+	return json({ guestId: Number(info.lastInsertRowid), order: loadOrder(orderId, locationId) }, { status: 201 });
 };

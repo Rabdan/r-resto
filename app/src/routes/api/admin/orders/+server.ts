@@ -1,9 +1,8 @@
-import { json } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
+import { json, type RequestHandler } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/admin';
+import { db } from '$lib/server/db';
 import { getOpenShiftId } from '$lib/server/expenses';
-import { loadPrechecksForShift } from '$lib/server/shifts';
-import type { RequestHandler } from './$types';
+import { loadOrdersForShift } from '$lib/server/shifts';
 
 export const GET: RequestHandler = async ({ locals }) => {
 	const denied = requireAdmin(locals);
@@ -14,6 +13,6 @@ export const GET: RequestHandler = async ({ locals }) => {
 	const shiftId = getOpenShiftId(db, locationId);
 	if (!shiftId) return json({ open: [], closed: [], cancelled: [] });
 
-	const { open, closed_prechecks, cancelled } = loadPrechecksForShift(db, locationId, shiftId);
-	return json({ open, closed: closed_prechecks, cancelled });
+	const { open, closed_checks, cancelled } = loadOrdersForShift(db, locationId, shiftId);
+	return json({ open, closed: closed_checks, cancelled });
 };

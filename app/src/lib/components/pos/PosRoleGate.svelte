@@ -14,18 +14,23 @@
 
 	onMount(() => {
 		document.documentElement.classList.add('pos-shell');
+		if (role === 'waiter' || role === 'kitchen') document.documentElement.classList.add('pos-shell-light');
 		void startPosSession(role);
 		return () => {
-			document.documentElement.classList.remove('pos-shell');
+			document.documentElement.classList.remove('pos-shell', 'pos-shell-light');
 			stopPosSession();
 		};
 	});
+
+	const light = $derived(role === 'waiter' || role === 'kitchen');
 </script>
 
-<div class="min-h-dvh bg-slate-900 text-slate-100">
+<div class="h-dvh overflow-hidden {light ? 'bg-slate-50 text-slate-900' : 'bg-slate-900 text-slate-100'}">
 	{#if posSession.status === 'ready'}
 		{@render children()}
 	{:else}
-		<p class="flex min-h-dvh items-center justify-center text-slate-400">Подключение…</p>
+		<p class="flex h-full items-center justify-center {light ? 'text-slate-500' : 'text-slate-400'}">
+			Подключение…
+		</p>
 	{/if}
 </div>

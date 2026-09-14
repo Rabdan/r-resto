@@ -16,6 +16,13 @@
 		<script>
 			(function () {
 				try {
+					var isAdmin = location.pathname.indexOf('/admin') === 0;
+					var manifest = document.querySelector('link[rel="manifest"]');
+					if (manifest) manifest.setAttribute('href', isAdmin ? '/admin.webmanifest' : '/manifest.webmanifest');
+					var appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+					if (appleTitle) appleTitle.setAttribute('content', isAdmin ? 'Админ' : 'R-resto');
+					var theme = document.querySelector('meta[name="theme-color"]');
+					if (theme) theme.setAttribute('content', isAdmin ? '#059669' : '#ff6a3d');
 					var KEY = 'r_resto_device_id';
 					var CODE_KEY = 'r_resto_device_code';
 					var MAX_AGE = 60 * 60 * 24 * 365 * 5;

@@ -11,7 +11,7 @@
 	};
 	type Item = { title: string; quantity: number; price_cents: number; status: string };
 	type Guest = { name: string; is_paid: number };
-	type OpenPrecheck = {
+	type OpenOrder = {
 		id: number;
 		created_at: string;
 		waiter_name: string;
@@ -20,7 +20,7 @@
 		items: Item[];
 		guests: Guest[];
 	};
-	type ClosedPrecheck = {
+	type ClosedCheck = {
 		id: number;
 		created_at: string;
 		closed_at: string | null;
@@ -28,7 +28,7 @@
 		hall_name: string;
 		total_cents: number;
 	};
-	type CancelledPrecheck = {
+	type CancelledOrder = {
 		id: number;
 		created_at: string;
 		cancelled_at: string | null;
@@ -60,9 +60,9 @@
 		expenses_cents: number;
 		net_cents: number;
 		expenses: ShiftExpense[];
-		open: OpenPrecheck[];
-		closed_prechecks: ClosedPrecheck[];
-		cancelled: CancelledPrecheck[];
+		open: OpenOrder[];
+		closed_checks: ClosedCheck[];
+		cancelled: CancelledOrder[];
 	};
 
 	type Tab = 'all' | 'open' | 'closed' | 'cancelled';
@@ -82,7 +82,7 @@
 	let expanded = $state<number | null>(null);
 	let tab = $state<Tab>('open');
 
-	let target = $state<OpenPrecheck | null>(null);
+	let target = $state<OpenOrder | null>(null);
 	let preset = $state(presets[0]);
 	let customReason = $state('');
 	let submitting = $state(false);
@@ -163,20 +163,20 @@
 			return;
 		}
 		submitting = true;
-		const res = await fetch(`/api/admin/prechecks/${target.id}/cancel`, {
+		const res = await fetch(`/api/admin/orders/${target.id}/cancel`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ reason })
 		});
 		submitting = false;
 		if (!res.ok) {
-			error = 'Не удалось отменить пречек';
+			error = 'Не удалось отменить заказ';
 			return;
 		}
 		target = null;
 		customReason = '';
 		preset = presets[0];
-		message = 'Пречек отменён';
+		message = 'Заказ отменён';
 		await load();
 	}
 
@@ -271,7 +271,7 @@
 				onclick={() => {
 					if (confirm('Закрыть смену и сформировать Z-отчёт?')) void closeShift();
 				}}
-				class="mt-3 h-12 w-full rounded-md bg-rose-600 font-semibold text-white"
+				class="mt-3 h-10 w-full rounded-md bg-rose-600 text-sm font-semibold text-white"
 			>
 				Закрыть смену и сформировать Z-отчёт
 			</button>
@@ -299,7 +299,7 @@
 					<button
 						type="button"
 						onclick={() => (tab = tabItem.key)}
-						class="h-12 rounded-md text-sm font-semibold {tab === tabItem.key
+						class="h-10 rounded-md text-sm font-semibold {tab === tabItem.key
 							? 'bg-emerald-600 text-white'
 							: 'bg-white text-slate-700'}"
 					>
@@ -309,23 +309,23 @@
 			</div>
 
 			{#if tab === 'open'}
-				{#each openShift.open as precheck}
+				{#each openShift.open as order}
 					<article class="rounded-md border border-slate-200 bg-white p-4">
 						<div class="flex items-start justify-between gap-2">
 							<div>
-								<p class="font-semibold">Пречек №{precheck.id}</p>
+								<p class="font-semibold">Заказ №{order.id}</p>
 								<p class="text-sm text-slate-500">
-									{precheck.waiter_name} · {precheck.hall_name}
+									{order.waiter_name} · {order.hall_name}
 								</p>
-								<p class="text-xs text-slate-500">{datetimeLabel(precheck.created_at)}</p>
+								<p class="text-xs text-slate-500">{datetimeLabel(order.created_at)}</p>
 							</div>
-							<p class="font-semibold">{formatMoney(precheck.total_cents)}</p>
+							<p class="font-semibold">{formatMoney(order.total_cents)}</p>
 						</div>
 						<p class="mt-2 text-sm text-slate-700">
-							Гости: {precheck.guests.map((g) => g.name).join(', ') || '—'}
+							Гости: {order.guests.map((g) => g.name).join(', ') || '—'}
 						</p>
 						<ul class="mt-2 space-y-1 text-sm text-slate-700">
-							{#each precheck.items as item}
+							{#each order.items as item}
 								<li>{item.quantity}× {item.title} — {formatMoney(item.price_cents * item.quantity)}</li>
 							{:else}
 								<li class="text-slate-500">Позиций нет</li>
@@ -334,27 +334,27 @@
 						<button
 							type="button"
 							onclick={() => {
-								target = precheck;
+								target = order;
 								error = null;
 							}}
-							class="mt-3 h-12 w-full rounded-md bg-rose-100 font-semibold text-rose-700"
+							class="mt-3 h-10 w-full rounded-md bg-rose-100 text-sm font-semibold text-rose-700"
 						>
-							Отменить пречек
+							Отменить заказ
 						</button>
 					</article>
 				{:else}
-					<p class="text-slate-500">Нет незакрытых чеков</p>
+					<p class="text-slate-500">Нет незакрытых заказов</p>
 				{/each}
 			{:else if tab === 'closed'}
 				<ul class="space-y-2">
-					{#each openShift.closed_prechecks as precheck}
+					{#each openShift.closed_checks as order}
 						<li class="rounded-md border border-slate-200 bg-white p-3">
 							<div class="flex justify-between gap-2">
-								<span class="font-semibold">Чек №{precheck.id}</span>
-								<span class="font-semibold">{formatMoney(precheck.total_cents)}</span>
+								<span class="font-semibold">Чек №{order.id}</span>
+								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
-							<p class="text-sm text-slate-500">{precheck.waiter_name} · {precheck.hall_name}</p>
-							<p class="text-xs text-slate-500">Закрыт: {datetimeLabel(precheck.closed_at)}</p>
+							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
+							<p class="text-xs text-slate-500">Закрыт: {datetimeLabel(order.closed_at)}</p>
 						</li>
 					{:else}
 						<li class="text-slate-500">Нет закрытых чеков</li>
@@ -362,14 +362,14 @@
 				</ul>
 			{:else if tab === 'cancelled'}
 				<ul class="space-y-2">
-					{#each openShift.cancelled as precheck}
+					{#each openShift.cancelled as order}
 						<li class="rounded-md border border-slate-200 bg-slate-100 p-3 text-sm">
 							<div class="flex justify-between">
-								<span class="font-medium">№{precheck.id}</span>
-								<span>{formatMoney(precheck.total_cents)}</span>
+								<span class="font-medium">№{order.id}</span>
+								<span>{formatMoney(order.total_cents)}</span>
 							</div>
-							<p class="text-slate-500">{precheck.waiter_name} · {precheck.cancelled_by ?? 'админ'}</p>
-							<p class="text-rose-600">{precheck.cancel_reason}</p>
+							<p class="text-slate-500">{order.waiter_name} · {order.cancelled_by ?? 'админ'}</p>
+							<p class="text-rose-600">{order.cancel_reason}</p>
 						</li>
 					{:else}
 						<li class="text-slate-500">Пока нет отмен</li>
@@ -377,37 +377,37 @@
 				</ul>
 			{:else}
 				<ul class="space-y-2">
-					{#each openShift.open as precheck}
+					{#each openShift.open as order}
 						<li class="rounded-md border border-slate-200 bg-white p-3">
 							<div class="flex justify-between gap-2">
-								<span class="font-semibold">Пречек №{precheck.id}</span>
-								<span class="font-semibold">{formatMoney(precheck.total_cents)}</span>
+								<span class="font-semibold">Заказ №{order.id}</span>
+								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
-							<p class="text-sm text-slate-500">{precheck.waiter_name} · {precheck.hall_name}</p>
+							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
 							<p class="text-xs text-emerald-600">незакрыт</p>
 						</li>
 					{/each}
-					{#each openShift.closed_prechecks as precheck}
+					{#each openShift.closed_checks as order}
 						<li class="rounded-md border border-slate-200 bg-white p-3">
 							<div class="flex justify-between gap-2">
-								<span class="font-semibold">Чек №{precheck.id}</span>
-								<span class="font-semibold">{formatMoney(precheck.total_cents)}</span>
+								<span class="font-semibold">Чек №{order.id}</span>
+								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
-							<p class="text-sm text-slate-500">{precheck.waiter_name} · {precheck.hall_name}</p>
+							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
 							<p class="text-xs text-slate-500">закрыт</p>
 						</li>
 					{/each}
-					{#each openShift.cancelled as precheck}
+					{#each openShift.cancelled as order}
 						<li class="rounded-md border border-slate-200 bg-slate-100 p-3">
 							<div class="flex justify-between gap-2">
-								<span class="font-semibold">№{precheck.id}</span>
-								<span class="font-semibold">{formatMoney(precheck.total_cents)}</span>
+								<span class="font-semibold">№{order.id}</span>
+								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
-							<p class="text-sm text-slate-500">{precheck.waiter_name}</p>
+							<p class="text-sm text-slate-500">{order.waiter_name}</p>
 							<p class="text-xs text-rose-600">отменён</p>
 						</li>
 					{/each}
-					{#if openShift.open.length === 0 && openShift.closed_prechecks.length === 0 && openShift.cancelled.length === 0}
+					{#if openShift.open.length === 0 && openShift.closed_checks.length === 0 && openShift.cancelled.length === 0}
 						<li class="text-slate-500">Чеков нет</li>
 					{/if}
 				</ul>
@@ -422,7 +422,7 @@
 					<input
 						type="datetime-local"
 						bind:value={expTime}
-						class="mt-1 h-12 w-full rounded-md border border-slate-200 bg-slate-50 px-3"
+						class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3"
 					/>
 				</label>
 				<label class="block text-sm text-slate-600">
@@ -432,28 +432,36 @@
 						inputmode="decimal"
 						min="0"
 						bind:value={expAmount}
-						class="mt-1 h-12 w-full rounded-md border border-slate-200 bg-slate-50 px-3"
+						class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3"
 						placeholder="0"
 					/>
 				</label>
 				<div>
 					<p class="text-sm text-slate-600">Тип расхода</p>
-					<div class="mt-1 grid grid-cols-2 gap-2">
+					<div
+						class="mt-1 flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1"
+						role="radiogroup"
+						aria-label="Тип расхода"
+					>
 						<button
 							type="button"
+							role="radio"
+							aria-checked={expMethod === 'cashless'}
 							onclick={() => (expMethod = 'cashless')}
-							class="h-12 rounded-md font-semibold {expMethod === 'cashless'
+							class="h-10 flex-1 rounded-md text-sm font-semibold {expMethod === 'cashless'
 								? 'bg-emerald-600 text-white'
-								: 'bg-slate-100 text-slate-700'}"
+								: 'bg-white text-slate-700'}"
 						>
 							Банк
 						</button>
 						<button
 							type="button"
+							role="radio"
+							aria-checked={expMethod === 'cash'}
 							onclick={() => (expMethod = 'cash')}
-							class="h-12 rounded-md font-semibold {expMethod === 'cash'
+							class="h-10 flex-1 rounded-md text-sm font-semibold {expMethod === 'cash'
 								? 'bg-emerald-600 text-white'
-								: 'bg-slate-100 text-slate-700'}"
+								: 'bg-white text-slate-700'}"
 						>
 							Наличные
 						</button>
@@ -471,7 +479,7 @@
 					type="button"
 					onclick={() => void addExpense()}
 					disabled={expSubmitting}
-					class="h-12 w-full rounded-md bg-emerald-600 font-semibold text-white disabled:opacity-50"
+					class="h-10 w-full rounded-md bg-emerald-600 text-sm font-semibold text-white disabled:opacity-50"
 				>
 					Добавить расход
 				</button>
@@ -528,7 +536,7 @@
 		<button
 			type="button"
 			onclick={() => void openNewShift()}
-			class="h-12 w-full rounded-md bg-emerald-600 font-semibold text-white"
+			class="h-10 w-full rounded-md bg-emerald-600 text-sm font-semibold text-white"
 		>
 			Открыть смену
 		</button>
@@ -639,7 +647,7 @@
 						<button
 							type="button"
 							onclick={() => void exportZ(shift.id)}
-							class="h-12 w-full rounded-md bg-emerald-700 font-semibold text-white"
+							class="h-10 w-full rounded-md bg-emerald-700 text-sm font-semibold text-white"
 						>
 							Выгрузить Z-отчёт в Excel
 						</button>
@@ -657,7 +665,7 @@
 		<div class="w-full max-w-md rounded-md border border-slate-300 bg-slate-100 p-4">
 			<p class="font-semibold">Подтверждение отмены</p>
 			<p class="mt-1 text-sm text-slate-700">
-				Пречек №{target.id} ({target.waiter_name}) — {formatMoney(target.total_cents)}
+				Заказ №{target.id} ({target.waiter_name}) — {formatMoney(target.total_cents)}
 			</p>
 			<p class="mt-3 text-sm text-slate-500">Причина (обязательно)</p>
 			<div class="mt-2 flex flex-wrap gap-2">
@@ -679,12 +687,12 @@
 				></textarea>
 			{/if}
 			<div class="mt-4 grid grid-cols-2 gap-2">
-				<button type="button" onclick={() => (target = null)} class="h-12 rounded-md bg-white">Отмена</button>
+				<button type="button" onclick={() => (target = null)} class="h-10 rounded-md bg-white text-sm">Отмена</button>
 				<button
 					type="button"
 					onclick={confirmCancel}
 					disabled={submitting}
-					class="h-12 rounded-md bg-rose-700 text-white font-semibold disabled:opacity-50"
+					class="h-10 rounded-md bg-rose-700 text-sm text-white font-semibold disabled:opacity-50"
 				>
 					Подтвердить отмену
 				</button>

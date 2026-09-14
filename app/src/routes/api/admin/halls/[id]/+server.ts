@@ -1,6 +1,9 @@
 import { json } from '@sveltejs/kit';
+import fs from 'node:fs';
+import path from 'node:path';
 import { db } from '$lib/server/db';
 import { requireAdmin } from '$lib/server/admin';
+import { uploadsPath } from '$lib/server/paths';
 import type { RequestHandler } from './$types';
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -58,7 +61,19 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 		.prepare(`SELECT COUNT(*) AS n FROM orders WHERE hall_id = ?`)
 		.get(id) as { n: number };
 	if (count.n > 0) {
-		return json({ error: 'hall_has_orders', orders: count.n }, { status: 409 });
+		db.prepare(`UPDATE halls SET is_active = 0, closed_at = datetime('now') WHERE id = ?`).run(id);
+		return json({ ok: true, blocked: true });
+	}
+
+	const qr = db.prepare(`SELECT qr_image_path FROM halls WHERE id = ?`).get(id) as
+		| { qr_image_path: string | null }
+		| undefined;
+	if (qr?.qr_image_path) {
+		const root = path.resolve(uploadsPath);
+		const full = path.resolve(root, qr.qr_image_path);
+		if (full.startsWith(root + path.sep) && fs.existsSync(full) && fs.statSync(full).isFile()) {
+			fs.unlinkSync(full);
+		}
 	}
 
 	db.prepare(`DELETE FROM halls WHERE id = ?`).run(id);

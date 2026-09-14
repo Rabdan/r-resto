@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import {
 	getOpenOrder,
-	loadPrecheck,
+	loadOrder,
 	notifyOrder,
 	refreshOrderTotal,
 	waiterLocationId
@@ -33,10 +33,12 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	if (item.status !== 'held') return json({ error: 'already_sent' }, { status: 409 });
 
 	db.transaction(() => {
+		const current = getHeldItem(orderId, itemId);
+		if (!current || current.status !== 'held') return;
 		if (body.action === 'inc') {
 			db.prepare(`UPDATE order_items SET quantity = quantity + 1 WHERE id = ?`).run(itemId);
 		} else if (body.action === 'dec') {
-			if (item.quantity <= 1) {
+			if (current.quantity <= 1) {
 				db.prepare(`DELETE FROM order_items WHERE id = ?`).run(itemId);
 			} else {
 				db.prepare(`UPDATE order_items SET quantity = quantity - 1 WHERE id = ?`).run(itemId);
@@ -46,7 +48,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	})();
 
 	notifyOrder(orderId, locationId);
-	return json({ precheck: loadPrecheck(orderId, locationId) });
+	return json({ order: loadOrder(orderId, locationId) });
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
@@ -69,5 +71,5 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	})();
 
 	notifyOrder(orderId, locationId);
-	return json({ precheck: loadPrecheck(orderId, locationId) });
+	return json({ order: loadOrder(orderId, locationId) });
 };

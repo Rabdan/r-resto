@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { pinIsTaken, requireAdmin, resolveAdminPinHash } from '$lib/server/admin';
+import { rolesByDeviceId } from '$lib/server/devices';
 import type { RequestHandler } from './$types';
 
 function locationIdFor(admin: App.Locals['admin']): number | null {
@@ -55,8 +56,11 @@ export const GET: RequestHandler = async ({ locals }) => {
 		list.push(row.hall_id);
 		hallMap.set(row.device_id, list);
 	}
+	const roleMap = rolesByDeviceId();
 	for (const device of devices) {
-		(device as { hall_ids?: number[] }).hall_ids = hallMap.get(device.id) ?? [];
+		(device as { hall_ids?: number[]; roles?: string[] }).hall_ids = hallMap.get(device.id) ?? [];
+		(device as { hall_ids?: number[]; roles?: string[] }).roles =
+			roleMap.get(device.id) ?? (device.role ? [device.role] : []);
 	}
 
 	return json({ staff, devices });
@@ -76,6 +80,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	let role = 'staff';
 	let pinHash: string | null = null;
 	if (body.pin !== undefined) {
+		if (/^0+$/.test(body.pin.trim()) && body.pin.trim().length > 0) {
+			return json({ error: 'Пароль не может быть из одних нулей' }, { status: 400 });
+		}
 		const resolved = resolveAdminPinHash(body.pin);
 		if (resolved.error) return json({ error: resolved.error }, { status: 400 });
 		if (resolved.hash) {

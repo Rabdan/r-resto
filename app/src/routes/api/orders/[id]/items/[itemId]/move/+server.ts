@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import {
 	getOpenOrder,
-	loadPrecheck,
+	loadOrder,
 	mergeOrInsertHeld,
 	notifyOrder,
 	refreshOrderTotal,
@@ -46,7 +46,12 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		  }
 		| undefined;
 	if (!item) return json({ error: 'not_found' }, { status: 404 });
-	if (item.guest_id === dest.id) return json({ precheck: loadPrecheck(orderId, locationId) });
+	const source = db
+		.prepare(`SELECT id, is_paid FROM order_guests WHERE id = ? AND order_id = ?`)
+		.get(item.guest_id, orderId) as { id: number; is_paid: number } | undefined;
+	if (!source) return json({ error: 'guest_not_found' }, { status: 400 });
+	if (source.is_paid) return json({ error: 'guest_paid' }, { status: 409 });
+	if (item.guest_id === dest.id) return json({ order: loadOrder(orderId, locationId) });
 
 	let moveQty = Number(body.quantity);
 	if (!Number.isFinite(moveQty) || moveQty < 1) {
@@ -78,5 +83,5 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	})();
 
 	notifyOrder(orderId, locationId);
-	return json({ precheck: loadPrecheck(orderId, locationId) });
+	return json({ order: loadOrder(orderId, locationId) });
 };

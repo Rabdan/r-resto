@@ -11,6 +11,26 @@ html.pos-shell,
 html.pos-shell body {
 	background: #0f172a;
 	color: #f1f5f9;
+	height: 100dvh;
+	overflow: hidden;
+}
+
+html.pos-shell-light,
+html.pos-shell-light body {
+	background: #f8fafc;
+	color: #0f172a;
+}
+
+@media print {
+	@page {
+		margin: 8mm;
+	}
+
+	html.pos-shell-light,
+	html.pos-shell-light body {
+		background: #fff;
+		color: #000;
+	}
 }
 
 body {

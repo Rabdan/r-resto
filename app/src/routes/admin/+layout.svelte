@@ -10,24 +10,25 @@
 	const isLogin = $derived(page.url.pathname === '/admin');
 	let authState: AuthState = $state('checking');
 	let adminName = $state('');
+	let checked = $state(false);
 
 	$effect(() => {
 		const path = page.url.pathname;
-		if (path === '/admin') {
-			authState = 'checking';
-			return;
-		}
+		if (path === '/admin') return;
+		if (authState === 'allowed' && checked) return;
 
 		let cancelled = false;
-		authState = 'checking';
+		if (authState !== 'checking') authState = 'checking';
 		void fetch('/api/admin/me').then(async (res) => {
 			if (cancelled) return;
 			if (!res.ok) {
+				checked = false;
 				authState = 'denied';
 				return;
 			}
 			const data = await res.json();
 			adminName = data.admin?.name ?? '';
+			checked = true;
 			authState = 'allowed';
 		});
 
@@ -38,6 +39,8 @@
 
 	async function logout() {
 		await fetch('/api/admin/logout', { method: 'POST' });
+		checked = false;
+		authState = 'denied';
 		await goto('/admin');
 	}
 </script>
@@ -59,7 +62,7 @@
 		<button
 			type="button"
 			onclick={() => void goto('/admin')}
-			class="h-12 rounded-md bg-emerald-600 px-6 font-semibold text-white"
+			class="h-10 rounded-md bg-emerald-600 px-6 text-sm font-semibold text-white"
 		>
 			Войти
 		</button>

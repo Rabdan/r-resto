@@ -1,11 +1,11 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { requireAdmin } from '$lib/server/admin';
+import { parsePosRolesBody, replaceDeviceRoles } from '$lib/server/devices';
 import { broadcast } from '$lib/server/sse';
 import type { RequestHandler } from './$types';
 
 const VALID_STATUSES = ['active', 'suspended', 'terminated'] as const;
-const VALID_ROLES = ['waiter', 'kitchen'] as const;
 
 export const PATCH: RequestHandler = async ({ request, locals, params }) => {
 	const denied = requireAdmin(locals);
@@ -19,7 +19,11 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
 		| undefined;
 	if (!device) return json({ error: 'not_found' }, { status: 404 });
 
-	const body = (await request.json().catch(() => ({}))) as { status?: string; role?: string };
+	const body = (await request.json().catch(() => ({}))) as {
+		status?: string;
+		role?: string;
+		roles?: string[];
+	};
 
 	const status = body.status;
 	if (status !== undefined) {
@@ -31,8 +35,9 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
 		}
 	}
 
-	const role = body.role;
-	if (role !== undefined && !VALID_ROLES.includes(role as (typeof VALID_ROLES)[number])) {
+	const roles =
+		body.roles !== undefined || body.role !== undefined ? parsePosRolesBody(body) : undefined;
+	if (roles !== undefined && !roles?.length) {
 		return json({ error: 'invalid_role' }, { status: 400 });
 	}
 
@@ -48,15 +53,14 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
 				).run(status, deviceId);
 			}
 		}
-		if (role !== undefined) {
-			db.prepare(`UPDATE devices SET role = ?, updated_at = datetime('now') WHERE id = ?`).run(role, deviceId);
-		}
+		if (roles) replaceDeviceRoles(deviceId, roles);
 	})();
 
-	if (status === 'active') {
-		broadcast('DEVICE_ACTIVATED', { deviceId, userId: device.assigned_user_id }, device.device_uuid);
-	} else if (status !== undefined) {
+	const nextStatus = status ?? device.status;
+	if (status !== undefined && status !== 'active') {
 		broadcast('DEVICE_BLOCKED', { deviceId }, device.device_uuid);
+	} else if (nextStatus === 'active' && (status === 'active' || roles)) {
+		broadcast('DEVICE_ACTIVATED', { deviceId, userId: device.assigned_user_id }, device.device_uuid);
 	}
 
 	return json({ ok: true });

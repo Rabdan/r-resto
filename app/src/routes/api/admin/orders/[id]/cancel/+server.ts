@@ -1,8 +1,7 @@
-import { json } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
+import { json, type RequestHandler } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/admin';
+import { db } from '$lib/server/db';
 import { broadcast } from '$lib/server/sse';
-import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const denied = requireAdmin(locals);
@@ -36,8 +35,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		 WHERE id = ?`
 	).run(reason, locals.admin!.id, orderId);
 
-	broadcast('PRECHECK_CANCELLED', {
+	broadcast('ORDER_CANCELLED', {
 		orderId,
+		locationId,
 		reason,
 		cancelledBy: locals.admin!.name
 	});

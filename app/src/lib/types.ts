@@ -11,6 +11,7 @@ export interface DeviceSession {
 	userId: number | null;
 	userName: string | null;
 	role: UserRole | null;
+	roles: UserRole[];
 	locationId: number | null;
 	locationName: string | null;
 }
@@ -26,4 +27,19 @@ export function roleHome(role: UserRole): string {
 	if (role === 'waiter') return '/waiter';
 	if (role === 'kitchen') return '/kitchen';
 	return '/';
+}
+
+export function deviceHasRole(
+	device: Pick<DeviceSession, 'roles' | 'role'> | null | undefined,
+	role: UserRole
+): boolean {
+	if (!device) return false;
+	if (device.roles?.includes(role)) return true;
+	return device.role === role;
+}
+
+export function posRolesOf(device: Pick<DeviceSession, 'roles' | 'role'> | null | undefined): UserRole[] {
+	if (!device) return [];
+	if (device.roles?.length) return device.roles;
+	return device.role ? [device.role] : [];
 }

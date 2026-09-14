@@ -9,6 +9,9 @@ import sql007 from './migrations/007_device_role.sql?raw';
 import sql008 from './migrations/008_staff_block.sql?raw';
 import sql009 from './migrations/009_device_halls.sql?raw';
 import sql010 from './migrations/010_shift_expenses.sql?raw';
+import sql011 from './migrations/011_hall_qr.sql?raw';
+import sql012 from './migrations/012_device_roles.sql?raw';
+import sql013 from './migrations/013_item_ready_at.sql?raw';
 import { hashPin } from '../pin';
 
 const migrations: Array<{ id: string; sql: string }> = [
@@ -21,7 +24,10 @@ const migrations: Array<{ id: string; sql: string }> = [
 	{ id: '007_device_role.sql', sql: sql007 },
 	{ id: '008_staff_block.sql', sql: sql008 },
 	{ id: '009_device_halls.sql', sql: sql009 },
-	{ id: '010_shift_expenses.sql', sql: sql010 }
+	{ id: '010_shift_expenses.sql', sql: sql010 },
+	{ id: '011_hall_qr.sql', sql: sql011 },
+	{ id: '012_device_roles.sql', sql: sql012 },
+	{ id: '013_item_ready_at.sql', sql: sql013 }
 ];
 
 const DEFAULT_SUPERADMIN_PIN = '1708';

@@ -2,7 +2,7 @@
 	"id": "/",
 	"name": "R-resto",
 	"short_name": "R-resto",
-	"description": "POS, кухня и админка",
+	"description": "Официант и кухня R-resto",
 	"start_url": "/",
 	"scope": "/",
 	"display": "standalone",

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import AdminSwitch from '$lib/components/admin/AdminSwitch.svelte';
+	import type { UserRole } from '$lib/types';
 
 	type Staff = {
 		id: number;
@@ -16,6 +18,7 @@
 		device_name: string | null;
 		status: string;
 		role: string | null;
+		roles: UserRole[];
 		assigned_user_id: number | null;
 		user_name: string | null;
 		blocked_at: string | null;
@@ -35,14 +38,17 @@
 	let createOpen = $state(false);
 	let newName = $state('');
 	let newPin = $state('');
+	let newAdmin = $state(false);
 
 	let openId = $state<number | null>(null);
 	let editName = $state('');
 	let editPin = $state('');
+	let editAdmin = $state(false);
 	let deleting = $state(false);
 
 	let bindCode = $state('');
-	let bindRole = $state<'waiter' | 'kitchen'>('waiter');
+	let bindWaiter = $state(true);
+	let bindKitchen = $state(false);
 
 	const selected = $derived(staff.find((s) => s.id === openId) ?? null);
 	const selectedDevices = $derived(devices.filter((d) => d.assigned_user_id === openId));
@@ -62,7 +68,10 @@
 		}
 		const data = await staffRes.json();
 		staff = data.staff ?? [];
-		devices = data.devices ?? [];
+		devices = (data.devices ?? []).map((d: Device) => ({
+			...d,
+			roles: d.roles?.length ? d.roles : d.role ? [d.role as UserRole] : []
+		}));
 		if (hallsRes.ok) {
 			const hd = await hallsRes.json();
 			halls = (hd.halls ?? []).filter((h: Hall) => h.is_active === 1);
@@ -70,12 +79,27 @@
 		if (openId && !staff.some((s) => s.id === openId)) openId = null;
 	}
 
+	function deviceRoles(d: Device): UserRole[] {
+		return d.roles?.length ? d.roles : d.role ? [d.role as UserRole] : [];
+	}
+
+	function staffRoleLabels(s: Staff): string[] {
+		const labels: string[] = [];
+		const ds = devices.filter((d) => d.assigned_user_id === s.id);
+		if (ds.some((d) => deviceRoles(d).includes('waiter'))) labels.push('официант');
+		if (ds.some((d) => deviceRoles(d).includes('kitchen'))) labels.push('кухня');
+		if (s.role === 'admin') labels.push('админ');
+		return labels;
+	}
+
 	function openStaff(s: Staff) {
 		openId = s.id;
 		editName = s.name;
 		editPin = '';
+		editAdmin = s.is_superadmin === 1 || s.role === 'admin';
 		bindCode = '';
-		bindRole = 'waiter';
+		bindWaiter = true;
+		bindKitchen = false;
 		error = null;
 		message = null;
 	}
@@ -90,10 +114,18 @@
 			error = 'Укажи имя сотрудника';
 			return;
 		}
+		if (newAdmin && !newPin.trim()) {
+			error = 'Задай пароль админки';
+			return;
+		}
+		if (newAdmin && /^0+$/.test(newPin.trim())) {
+			error = 'Пароль не может быть из одних нулей';
+			return;
+		}
 		const res = await fetch('/api/admin/staff', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: newName.trim(), pin: newPin })
+			body: JSON.stringify({ name: newName.trim(), pin: newAdmin ? newPin : '' })
 		});
 		const data = await res.json();
 		if (!res.ok) {
@@ -102,6 +134,7 @@
 		}
 		newName = '';
 		newPin = '';
+		newAdmin = false;
 		createOpen = false;
 		message = 'Сотрудник добавлен';
 		await load();
@@ -113,41 +146,48 @@
 			error = 'Укажи имя сотрудника';
 			return;
 		}
+		const payload: { name: string; pin?: string; admin?: boolean } = { name: editName.trim() };
+		if (selected.is_superadmin !== 1) {
+			payload.admin = editAdmin;
+			if (editAdmin) {
+				if (editPin && /^0+$/.test(editPin.trim())) {
+					error = 'Пароль не может быть из одних нулей';
+					return;
+				}
+				if (editPin) payload.pin = editPin;
+				else if (!selected.has_pin) {
+					error = 'Задай пароль админки';
+					return;
+				}
+			}
+		}
 		const res = await fetch(`/api/admin/staff/${selected.id}`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: editName.trim(), pin: editPin })
+			body: JSON.stringify(payload)
 		});
 		const data = await res.json();
 		if (!res.ok) {
 			error = data.error ?? 'Ошибка сохранения';
 			return;
 		}
+		editPin = '';
 		message = 'Сохранено';
 		await load();
 	}
 
-	async function blockStaff() {
+	async function setStaffBlocked(next: boolean) {
 		if (!selected) return;
 		error = null;
-		const res = await fetch(`/api/admin/staff/${selected.id}/block`, { method: 'POST' });
+		const res = await fetch(
+			`/api/admin/staff/${selected.id}/${next ? 'block' : 'unblock'}`,
+			{ method: 'POST' }
+		);
 		if (!res.ok) {
-			error = 'Не удалось заблокировать';
+			error = next ? 'Не удалось заблокировать' : 'Не удалось разблокировать';
 			return;
 		}
-		message = 'Сотрудник заблокирован';
-		await load();
-	}
-
-	async function unblockStaff() {
-		if (!selected) return;
-		error = null;
-		const res = await fetch(`/api/admin/staff/${selected.id}/unblock`, { method: 'POST' });
-		if (!res.ok) {
-			error = 'Не удалось разблокировать';
-			return;
-		}
-		message = 'Сотрудник разблокирован';
+		message = next ? 'Сотрудник заблокирован' : 'Сотрудник разблокирован';
 		await load();
 	}
 
@@ -191,18 +231,28 @@
 		await load();
 	}
 
-	async function setDeviceRole(device: Device, role: 'waiter' | 'kitchen') {
+	async function setDeviceRoles(device: Device, next: UserRole[]) {
+		if (!next.length) {
+			error = 'Выбери хотя бы одну роль: официант или кухня';
+			return;
+		}
 		error = null;
 		const res = await fetch(`/api/admin/devices/${device.id}`, {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ role })
+			body: JSON.stringify({ roles: next })
 		});
 		if (!res.ok) {
-			error = 'Не удалось сменить роль';
+			error = 'Не удалось сменить роли';
 			return;
 		}
 		await load();
+	}
+
+	function toggleDeviceRole(device: Device, role: UserRole, on: boolean) {
+		const current = deviceRoles(device);
+		const next = on ? [...new Set([...current, role])] : current.filter((r) => r !== role);
+		void setDeviceRoles(device, next as UserRole[]);
 	}
 
 	async function toggleDeviceHall(device: Device, hallId: number, checked: boolean) {
@@ -228,10 +278,17 @@
 			error = 'Введи код устройства';
 			return;
 		}
+		const roles: UserRole[] = [];
+		if (bindWaiter) roles.push('waiter');
+		if (bindKitchen) roles.push('kitchen');
+		if (!roles.length) {
+			error = 'Выбери хотя бы одну роль: официант или кухня';
+			return;
+		}
 		const res = await fetch('/api/admin/devices/bind', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ code: bindCode.trim(), userId: openId, role: bindRole })
+			body: JSON.stringify({ code: bindCode.trim(), userId: openId, roles })
 		});
 		const data = await res.json();
 		if (!res.ok) {
@@ -282,27 +339,32 @@
 				Имя
 				<input bind:value={newName} class="mt-1 h-10 w-full rounded-md bg-slate-100 px-3" placeholder="Имя сотрудника" />
 			</label>
-			<label class="block text-sm text-slate-700">
-				Пароль админки
-				<input
-					bind:value={newPin}
-					type="password"
-					inputmode="numeric"
-					maxlength="8"
-					autocomplete="new-password"
-					class="mt-1 h-10 w-full rounded-md bg-slate-100 px-3"
-					placeholder="4–8 цифр, пусто — без доступа"
-				/>
-			</label>
-			<p class="text-xs text-amber-700">{PIN_WARNING}</p>
+			<div class="flex gap-2">
+				<AdminSwitch label="Админ" checked={newAdmin} onchange={(next) => (newAdmin = next)} />
+			</div>
+			{#if newAdmin}
+				<label class="block text-sm text-slate-700">
+					Пароль админки
+					<input
+						bind:value={newPin}
+						type="password"
+						inputmode="numeric"
+						maxlength="8"
+						autocomplete="new-password"
+						class="mt-1 h-10 w-full rounded-md bg-slate-100 px-3"
+						placeholder="4–8 цифр"
+					/>
+				</label>
+				<p class="text-xs text-amber-700">{PIN_WARNING}</p>
+			{/if}
 			<button class="h-10 w-full rounded-md bg-emerald-600 text-sm font-semibold text-white">Создать</button>
 		</form>
 	{/if}
 
-	{#if error}
+	{#if error && !selected}
 		<p class="text-sm text-rose-600">{error}</p>
 	{/if}
-	{#if message}
+	{#if message && !selected}
 		<p class="text-sm text-emerald-600">{message}</p>
 	{/if}
 
@@ -313,16 +375,13 @@
 				<button
 					type="button"
 					onclick={() => openStaff(s)}
-					class="flex h-12 w-full items-center justify-between rounded-md px-4 text-left bg-white text-slate-700"
+					class="flex h-10 w-full items-center justify-between rounded-md px-3 text-left bg-white text-slate-700"
 				>
 					<div class="min-w-0">
 						<p class="truncate text-sm font-semibold">
 							{s.name}
 							{#if s.is_superadmin}
 								<span class="ml-1 text-xs opacity-70">(владелец)</span>
-							{/if}
-							{#if s.role === 'admin'}
-								<span class="ml-1 rounded bg-emerald-100 px-1 text-xs text-emerald-700">админ</span>
 							{/if}
 							{#if s.is_blocked === 1}
 								<span class="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-700">заблокирован</span>
@@ -332,11 +391,7 @@
 							{/if}
 						</p>
 						<p class="text-xs text-slate-500">
-							{#if s.role === 'admin'}
-								{s.has_pin ? 'есть доступ в админку' : 'нет доступа'}
-							{:else}
-								Сотрудник
-							{/if}
+							{staffRoleLabels(s).join(' · ') || 'нет ролей'}
 						</p>
 					</div>
 					<div class="flex items-center gap-2">
@@ -350,8 +405,8 @@
 </div>
 
 {#if selected}
-	<div class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center print:hidden">
-		<div class="max-h-[92vh] w-full max-w-sm overflow-y-auto rounded-lg bg-slate-100 p-4">
+	<div class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center print:hidden">
+		<div class="max-h-[92vh] w-full max-w-sm overflow-y-auto rounded-lg bg-slate-100 p-3">
 			<div class="flex items-center justify-between">
 				<p class="text-base font-bold">{selected.name}</p>
 				<button type="button" onclick={close} class="flex h-8 w-8 items-center justify-center rounded-md bg-white text-sm text-slate-500" aria-label="Закрыть">
@@ -366,50 +421,76 @@
 				<p class="mt-2 text-sm text-emerald-600">{message}</p>
 			{/if}
 
-			<label class="mt-3 block text-sm text-slate-700">
+			<label class="mt-2 block text-sm text-slate-700">
 				Имя
 				<input bind:value={editName} class="mt-1 h-10 w-full rounded-md bg-white px-3" />
 			</label>
 
+			<div class="mt-2 flex gap-2">
+				<AdminSwitch
+					label="Админ"
+					checked={editAdmin}
+					disabled={selected.is_superadmin === 1}
+					onchange={(next) => (editAdmin = next)}
+				/>
+			</div>
+
+			{#if selected.is_superadmin !== 1 && editAdmin}
+				<label class="mt-2 block text-sm text-slate-700">
+					Пароль админки
+					<input
+						bind:value={editPin}
+						type="password"
+						inputmode="numeric"
+						maxlength="8"
+						autocomplete="new-password"
+						class="mt-1 h-10 w-full rounded-md bg-white px-3"
+						placeholder={selected.has_pin ? 'задан · введи новый, чтобы сменить' : '4–8 цифр'}
+					/>
+				</label>
+				<p class="mt-1 text-xs text-amber-700">{PIN_WARNING}</p>
+			{/if}
+
 			{#if selected.is_active === 1}
-				<div class="mt-3 border-t border-slate-200 pt-2">
+				<div class="mt-2 border-t border-slate-200 pt-2">
 					<p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Устройства</p>
-					<ul class="mt-2 space-y-2">
+					<ul class="mt-1.5 space-y-1.5">
 						{#each selectedDevices as d}
-							<li class="rounded-md bg-white p-3">
+							<li class="rounded-md bg-white p-2">
 								<div class="flex items-center gap-2">
 									<span class="font-mono text-sm font-semibold">{d.device_code}</span>
-									<select
-										value={d.role ?? 'waiter'}
-										onchange={(e) =>
-											setDeviceRole(d, (e.currentTarget as HTMLSelectElement).value as 'waiter' | 'kitchen')}
-										class="ml-auto h-8 rounded bg-slate-100 px-1.5 text-sm"
-									>
-										<option value="waiter">Официант</option>
-										<option value="kitchen">Кухня</option>
-									</select>
-									<span class="text-xs text-slate-500">{d.status === 'active' ? 'работает' : 'заблок.'}</span>
+									<span class="ml-auto text-xs text-slate-500">{d.status === 'active' ? 'работает' : 'заблок.'}</span>
 									<button
 										type="button"
 										role="switch"
 										aria-checked={d.status === 'active'}
 										aria-label={d.status === 'active' ? 'Заблокировать устройство' : 'Разблокировать устройство'}
 										onclick={() => setDeviceStatus(d, d.status === 'active' ? 'suspended' : 'active')}
-										class="relative h-6 w-11 shrink-0 rounded-full transition-colors {d.status === 'active'
+										class="relative h-5 w-9 shrink-0 rounded-full transition-colors {d.status === 'active'
 											? 'bg-emerald-500'
 											: 'bg-slate-300'}"
 									>
 										<span
-											class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {d.status === 'active'
-												? 'translate-x-5'
+											class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform {d.status === 'active'
+												? 'translate-x-4'
 												: ''}"
 										></span>
 									</button>
 								</div>
-								<p class="mt-1 text-xs text-slate-500">
-									Заблокировано: {datetimeLabel(d.blocked_at)}
-								</p>
-								<div class="mt-2 border-t border-slate-100 pt-2">
+								<div class="mt-1.5 flex gap-2">
+									<AdminSwitch
+										label="Официант"
+										checked={deviceRoles(d).includes('waiter')}
+										onchange={(on) => toggleDeviceRole(d, 'waiter', on)}
+									/>
+									<AdminSwitch
+										label="Кухня"
+										checked={deviceRoles(d).includes('kitchen')}
+										onchange={(on) => toggleDeviceRole(d, 'kitchen', on)}
+									/>
+								</div>
+								<p class="mt-1 text-xs text-slate-500">Заблокировано: {datetimeLabel(d.blocked_at)}</p>
+								<div class="mt-1.5 border-t border-slate-100 pt-1.5">
 									<p class="text-xs text-slate-500">Залы</p>
 									<div class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
 										{#each halls as hall}
@@ -435,100 +516,74 @@
 					</ul>
 
 					<form
-						class="mt-2 flex items-center gap-2 rounded-md bg-white p-2"
+						class="mt-1.5 space-y-1.5 rounded-md bg-white p-2"
 						onsubmit={(e) => {
 							e.preventDefault();
 							void bind();
 						}}
 					>
-						<input
-							value={bindCode}
-							oninput={(e) => (bindCode = maskDeviceCode((e.currentTarget as HTMLInputElement).value))}
-							inputmode="numeric"
-							autocomplete="off"
-							class="h-10 min-w-0 flex-1 rounded-md bg-slate-100 px-3 font-mono text-sm tracking-widest"
-							placeholder="•••-•••"
-						/>
-						<select bind:value={bindRole} class="h-10 shrink-0 rounded-md bg-slate-100 px-1.5 text-sm">
-							<option value="waiter">Официант</option>
-							<option value="kitchen">Кухня</option>
-						</select>
-						<button
-							type="submit"
-							disabled={!bindCode.trim()}
-							class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white disabled:opacity-40"
-							aria-label="Привязать"
-						>
-							<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.5">
-								<path d="M12 5v14M5 12h14" />
-							</svg>
-						</button>
+						<div class="flex items-center gap-2">
+							<input
+								value={bindCode}
+								oninput={(e) => (bindCode = maskDeviceCode((e.currentTarget as HTMLInputElement).value))}
+								inputmode="numeric"
+								autocomplete="off"
+								class="h-10 min-w-0 flex-1 rounded-md bg-slate-100 px-3 font-mono text-sm tracking-widest"
+								placeholder="•••-•••"
+							/>
+							<button
+								type="submit"
+								disabled={!bindCode.trim()}
+								class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white disabled:opacity-40"
+								aria-label="Привязать"
+							>
+								<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.5">
+									<path d="M12 5v14M5 12h14" />
+								</svg>
+							</button>
+						</div>
+						<div class="flex gap-2">
+							<AdminSwitch label="Официант" checked={bindWaiter} onchange={(next) => (bindWaiter = next)} />
+							<AdminSwitch label="Кухня" checked={bindKitchen} onchange={(next) => (bindKitchen = next)} />
+						</div>
 					</form>
 				</div>
 			{/if}
 
-			{#if selected.is_superadmin !== 1}
-				<div class="mt-3 border-t border-slate-200 pt-2">
-					<label class="block text-sm text-slate-700">
-						Пароль админки
-						<input
-							bind:value={editPin}
-							type="password"
-							inputmode="numeric"
-							maxlength="8"
-							autocomplete="new-password"
-							class="mt-1 h-10 w-full rounded-md bg-white px-3"
-							placeholder={selected.has_pin ? 'задан · введи новый, чтобы сменить' : 'не задан'}
-						/>
-					</label>
-					<p class="mt-1 text-xs text-amber-700">{PIN_WARNING}</p>
-				</div>
-			{/if}
-
-			<div class="mt-3 space-y-2 border-t border-slate-200 pt-2">
-				<button class="h-10 w-full rounded-md bg-slate-800 text-sm font-semibold text-white" onclick={() => saveStaff()}>
+			<div class="mt-2 grid grid-cols-2 gap-2 border-t border-slate-200 pt-2">
+				<button type="button" class="h-10 rounded-md bg-white text-sm" onclick={close}>Отмена</button>
+				<button class="h-10 rounded-md bg-slate-800 text-sm font-semibold text-white" onclick={() => saveStaff()}>
 					Сохранить
 				</button>
-
-				{#if selected.is_superadmin !== 1}
-					{#if selected.is_blocked === 1}
-						<button
-							type="button"
-							onclick={() => unblockStaff()}
-							class="h-10 w-full rounded-md bg-emerald-100 text-sm font-semibold text-emerald-700"
-						>
-							Разблокировать сотрудника
-						</button>
-					{:else}
-						<button
-							type="button"
-							onclick={() => blockStaff()}
-							class="h-10 w-full rounded-md bg-amber-100 text-sm font-semibold text-amber-700"
-						>
-							Заблокировать сотрудника
-						</button>
-					{/if}
-
-					{#if selected.is_active === 1}
-						<button
-							type="button"
-							onclick={() => removeStaff()}
-							disabled={deleting}
-							class="h-10 w-full rounded-md bg-rose-100 text-sm font-semibold text-rose-700 disabled:opacity-50"
-						>
-							Удалить
-						</button>
-					{:else}
-						<button
-							type="button"
-							onclick={() => restoreStaff()}
-							class="h-10 w-full rounded-md bg-emerald-100 text-sm font-semibold text-emerald-700"
-						>
-							Восстановить
-						</button>
-					{/if}
-				{/if}
 			</div>
+
+			{#if selected.is_superadmin !== 1}
+				<div class="mt-2">
+					<AdminSwitch
+						label="Заблокирован"
+						checked={selected.is_blocked === 1}
+						onchange={(next) => void setStaffBlocked(next)}
+					/>
+				</div>
+				{#if selected.is_active === 1}
+					<button
+						type="button"
+						onclick={() => removeStaff()}
+						disabled={deleting}
+						class="mt-2 h-10 w-full rounded-md bg-rose-100 text-sm font-semibold text-rose-700 disabled:opacity-50"
+					>
+						Удалить
+					</button>
+				{:else}
+					<button
+						type="button"
+						onclick={() => restoreStaff()}
+						class="mt-2 h-10 w-full rounded-md bg-emerald-100 text-sm font-semibold text-emerald-700"
+					>
+						Восстановить
+					</button>
+				{/if}
+			{/if}
 		</div>
 	</div>
 {/if}

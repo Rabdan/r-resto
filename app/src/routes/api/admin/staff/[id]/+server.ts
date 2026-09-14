@@ -16,19 +16,26 @@ export const PUT: RequestHandler = async ({ request, locals, params }) => {
 	const body = (await request.json().catch(() => ({}))) as {
 		name?: string;
 		pin?: string;
+		admin?: boolean;
 	};
 
 	const name = body.name !== undefined ? (body.name ?? '').trim() : undefined;
 	if (name !== undefined && !name) return json({ error: 'Имя не может быть пустым' }, { status: 400 });
 
 	let pinUpdate: { role: string; hash: string | null } | null = null;
-	if (body.pin !== undefined && target.is_superadmin !== 1) {
-		const resolved = resolveAdminPinHash(body.pin);
-		if (resolved.error) return json({ error: resolved.error }, { status: 400 });
-		if (resolved.hash && pinIsTaken((body.pin ?? '').trim(), userId)) {
-			return json({ error: 'Такой пароль уже используется. Введите новый PIN' }, { status: 409 });
+	if (target.is_superadmin !== 1) {
+		if (body.admin === false) {
+			pinUpdate = { role: 'staff', hash: null };
+		} else if (body.pin !== undefined) {
+			const resolved = resolveAdminPinHash(body.pin);
+			if (resolved.error) return json({ error: resolved.error }, { status: 400 });
+			if (resolved.hash && pinIsTaken((body.pin ?? '').trim(), userId)) {
+				return json({ error: 'Такой пароль уже используется. Введите новый PIN' }, { status: 409 });
+			}
+			pinUpdate = { role: resolved.hash ? 'admin' : 'staff', hash: resolved.hash };
+		} else if (body.admin === true && target.role !== 'admin') {
+			return json({ error: 'Задай пароль админки' }, { status: 400 });
 		}
-		pinUpdate = { role: resolved.hash ? 'admin' : 'staff', hash: resolved.hash };
 	}
 
 	db.transaction(() => {
