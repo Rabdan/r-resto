@@ -11,7 +11,13 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			adapter: adapter()
+			adapter: adapter(),
+			// Админка работает по HTTP без TLS (LAN); adapter-node по умолчанию считает
+			// origin как `https://`, из-за чего multipart-загрузки картинок падают с 403
+			// (Cross-site POST). sameSite=lax на admin_session уже блокирует CSRF-подделку.
+			csrf: {
+				trustedOrigins: ['*']
+			}
 		})
 	],
 	ssr: {
