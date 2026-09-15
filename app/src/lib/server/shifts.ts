@@ -43,6 +43,8 @@ export type ClosedCheck = {
 	cashless_cents: number;
 	shortfall_cents: number;
 	writeoff_cents: number;
+	items: ShiftItem[];
+	guests: ShiftGuest[];
 };
 
 export type CancelledOrder = {
@@ -176,7 +178,7 @@ export function loadOrdersForShift(
 		)
 		.all(locationId, shiftId) as CancelledOrder[];
 
-	const closed_checks = db
+	const closedRows = db
 		.prepare(
 			`SELECT o.id, o.number, o.created_at, o.closed_at, u.name AS waiter_name, h.name AS hall_name,
 			        COALESCE((
@@ -192,7 +194,13 @@ export function loadOrdersForShift(
 			 WHERE o.location_id = ? AND o.shift_id = ? AND o.status = 'closed'
 			 ORDER BY o.number ASC`
 		)
-		.all(locationId, shiftId) as ClosedCheck[];
+		.all(locationId, shiftId) as Array<Omit<ClosedCheck, 'items' | 'guests'>>;
+
+	const closed_checks = closedRows.map((row) => ({
+		...row,
+		items: itemsStmt.all(row.id) as ShiftItem[],
+		guests: guestsStmt.all(row.id) as ShiftGuest[]
+	}));
 
 	return { open, closed_checks, cancelled };
 }

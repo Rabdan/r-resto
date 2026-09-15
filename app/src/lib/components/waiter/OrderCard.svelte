@@ -159,6 +159,9 @@
 		<div class="flex items-center justify-between gap-2">
 			<span class="flex min-w-0 items-center gap-2">
 				<span class="text-base font-bold">{closed ? 'Чек' : 'Заказ'} №{order.number}</span>
+				{#if closed}
+					<span class="text-xs text-slate-500">{timeHm(order.closed_at)}</span>
+				{/if}
 				{#if readyCount > 0}
 					<span
 						class="rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-bold text-white"
@@ -178,9 +181,11 @@
 			>
 		</div>
 		<p class="mt-1 text-sm text-slate-500">
-			{timeHm(closed ? order.closed_at : order.created_at)}
-			{#if !closed}· {ageLabel()}{/if}
-			· {order.waiter_name} · {order.hall_name}
+			{#if closed}
+				{order.waiter_name} · {order.hall_name}
+			{:else}
+				{timeHm(order.created_at)} · {ageLabel()} · {order.waiter_name} · {order.hall_name}
+			{/if}
 		</p>
 		<p class="mt-1 text-sm text-slate-700">
 			Гости: {order.guests.map((g) => g.name).join(', ') || '—'}

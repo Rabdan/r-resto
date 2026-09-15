@@ -184,7 +184,7 @@
 			<table class="min-w-[480px] w-full text-sm">
 				<thead>
 					<tr>
-						<th class="sticky top-0 left-0 z-20 bg-white px-3 py-2 text-left">Зал</th>
+						<th class="sticky top-0 left-0 z-20 bg-white w-[50vw] min-w-[50vw] px-3 py-2 text-left">Зал</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Кол-во</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Чеков</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Сумма</th>
@@ -193,7 +193,7 @@
 				<tbody>
 					{#each halls as row}
 						<tr class="border-t border-slate-200">
-							<td class="sticky left-0 z-10 bg-slate-100 px-3 py-2 font-medium">{row.name}</td>
+							<td class="sticky left-0 z-10 bg-slate-100 w-[50vw] min-w-[50vw] px-3 py-2 font-medium truncate">{row.name}</td>
 							<td class="px-3 py-2 text-right">{row.qty}</td>
 							<td class="px-3 py-2 text-right">{row.orders_count}</td>
 							<td class="px-3 py-2 text-right whitespace-nowrap">{formatMoney(row.amount_cents)}</td>
@@ -209,7 +209,7 @@
 			<table class="min-w-[480px] w-full text-sm">
 				<thead>
 					<tr>
-						<th class="sticky top-0 left-0 z-20 bg-white px-3 py-2 text-left">Официант</th>
+						<th class="sticky top-0 left-0 z-20 bg-white w-[50vw] min-w-[50vw] px-3 py-2 text-left">Официант</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Чеков</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Средний</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Сумма</th>
@@ -218,7 +218,7 @@
 				<tbody>
 					{#each waiters as row}
 						<tr class="border-t border-slate-200">
-							<td class="sticky left-0 z-10 bg-slate-100 px-3 py-2 font-medium">{row.name}</td>
+							<td class="sticky left-0 z-10 bg-slate-100 w-[50vw] min-w-[50vw] px-3 py-2 font-medium truncate">{row.name}</td>
 							<td class="px-3 py-2 text-right">{row.orders_count}</td>
 							<td class="px-3 py-2 text-right whitespace-nowrap">{formatMoney(row.avg_cents)}</td>
 							<td class="px-3 py-2 text-right whitespace-nowrap">{formatMoney(row.amount_cents)}</td>
@@ -234,7 +234,7 @@
 			<table class="min-w-[640px] w-full text-sm">
 				<thead>
 					<tr>
-						<th class="sticky top-0 left-0 z-20 bg-white px-3 py-2 text-left">Товар</th>
+						<th class="sticky top-0 left-0 z-20 bg-white w-[50vw] min-w-[50vw] px-3 py-2 text-left">Товар</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Текущий</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Прошлый</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Динамика</th>
@@ -243,7 +243,7 @@
 				<tbody>
 					{#each compare as row}
 						<tr class="border-t border-slate-200">
-							<td class="sticky left-0 z-10 bg-slate-100 px-3 py-2 font-medium">{row.title}</td>
+							<td class="sticky left-0 z-10 bg-slate-100 w-[50vw] min-w-[50vw] px-3 py-2 font-medium truncate">{row.title}</td>
 							<td class="px-3 py-2 text-right whitespace-nowrap">
 								{row.currentQty} шт / {formatMoney(row.currentCents)}
 							</td>
@@ -266,7 +266,7 @@
 			<table class="min-w-[560px] w-full text-sm">
 				<thead>
 					<tr>
-						<th class="sticky top-0 left-0 z-20 bg-white px-3 py-2 text-left">Смена</th>
+						<th class="sticky top-0 left-0 z-20 bg-white w-[50vw] min-w-[50vw] px-3 py-2 text-left">Смена</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Чеков</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Наличные</th>
 						<th class="sticky top-0 z-10 bg-white px-3 py-2 text-right">Безнал</th>
@@ -276,7 +276,7 @@
 				<tbody>
 					{#each shifts as row}
 						<tr class="border-t border-slate-200">
-							<td class="sticky left-0 z-10 bg-slate-100 px-3 py-2 font-medium">№{row.id}</td>
+							<td class="sticky left-0 z-10 bg-slate-100 w-[50vw] min-w-[50vw] px-3 py-2 font-medium truncate">№{row.id}</td>
 							<td class="px-3 py-2 text-right">{row.orders_count}</td>
 							<td class="px-3 py-2 text-right whitespace-nowrap">{formatMoney(row.cash_cents)}</td>
 							<td class="px-3 py-2 text-right whitespace-nowrap">{formatMoney(row.cashless_cents)}</td>

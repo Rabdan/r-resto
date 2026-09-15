@@ -34,6 +34,8 @@
 		cashless_cents: number;
 		shortfall_cents: number;
 		writeoff_cents: number;
+		items: Item[];
+		guests: Guest[];
 	};
 	type CancelledOrder = {
 		id: number;
@@ -108,6 +110,8 @@
 	let writeoffPreset = $state(writeoffPresets[0]);
 	let writeoffCustom = $state('');
 	let writeoffSubmitting = $state(false);
+
+	let detailCheck = $state<ClosedCheck | null>(null);
 
 	const openShift = $derived(shifts.find((s) => s.status === 'open') ?? null);
 	const closedShifts = $derived(shifts.filter((s) => s.status === 'closed'));
@@ -393,7 +397,10 @@
 			{:else if tab === 'closed'}
 				<ul class="space-y-2">
 					{#each openShift.closed_checks as order}
-						<li class="rounded-md border border-slate-200 bg-white p-3">
+						<li
+							class="touch-manipulation rounded-md border border-slate-200 bg-white p-3"
+							ondblclick={() => (detailCheck = order)}
+						>
 							<div class="flex justify-between gap-2">
 								<span class="font-semibold">Чек №{order.number}</span>
 								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
@@ -458,7 +465,10 @@
 						</li>
 					{/each}
 					{#each openShift.closed_checks as order}
-						<li class="rounded-md border border-slate-200 bg-white p-3">
+						<li
+							class="touch-manipulation rounded-md border border-slate-200 bg-white p-3"
+							ondblclick={() => (detailCheck = order)}
+						>
 							<div class="flex justify-between gap-2">
 								<span class="font-semibold">Чек №{order.number}</span>
 								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
@@ -824,6 +834,64 @@
 				>
 					Списать
 				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if detailCheck}
+	<div class="fixed inset-0 z-40 flex items-end justify-center bg-black/60 p-4 sm:items-center">
+		<div class="flex max-h-[90vh] w-full max-w-md flex-col rounded-md border border-slate-300 bg-slate-100">
+			<div class="flex items-start justify-between gap-2 border-b border-slate-200 p-4">
+				<div>
+					<p class="text-lg font-bold">Чек №{detailCheck.number}</p>
+					<p class="text-sm text-slate-500">{detailCheck.waiter_name} · {detailCheck.hall_name}</p>
+					<p class="text-xs text-slate-500">
+						Открыт: {datetimeLabel(detailCheck.created_at)}
+						{#if detailCheck.closed_at} · Закрыт: {datetimeLabel(detailCheck.closed_at)}{/if}
+					</p>
+				</div>
+				<button
+					type="button"
+					onclick={() => (detailCheck = null)}
+					class="h-9 w-9 shrink-0 rounded-md bg-white text-lg text-slate-500"
+				>
+					×
+				</button>
+			</div>
+
+			<div class="min-h-0 flex-1 overflow-y-auto p-4">
+				<ul class="space-y-1 text-sm">
+					{#each detailCheck.items as item}
+						<li class="flex justify-between gap-2">
+							<span>{item.quantity}× {item.title}</span>
+							<span class="shrink-0 whitespace-nowrap">{formatMoney(item.price_cents * item.quantity)}</span>
+						</li>
+					{:else}
+						<li class="text-slate-500">Позиций нет</li>
+					{/each}
+				</ul>
+				{#if detailCheck.guests.length > 0}
+					<p class="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Гости</p>
+					<p class="text-sm text-slate-700">{detailCheck.guests.map((g) => g.name).join(', ')}</p>
+				{/if}
+			</div>
+
+			<div class="space-y-1 border-t border-slate-200 p-4 text-sm">
+				{#if detailCheck.cashless_cents > 0}
+					<p class="flex justify-between"><span class="text-slate-600">Безнал</span><span>{formatMoney(detailCheck.cashless_cents)}</span></p>
+				{/if}
+				{#if detailCheck.cash_cents > 0}
+					<p class="flex justify-between"><span class="text-slate-600">Наличные</span><span>{formatMoney(detailCheck.cash_cents)}</span></p>
+				{/if}
+				{#if detailCheck.shortfall_cents > 0}
+					<p class="flex justify-between text-amber-600"><span>Недоплата</span><span>{formatMoney(detailCheck.shortfall_cents)}</span></p>
+				{:else if detailCheck.writeoff_cents > 0}
+					<p class="flex justify-between text-slate-500"><span>Списано</span><span>{formatMoney(detailCheck.writeoff_cents)}</span></p>
+				{/if}
+				<p class="flex justify-between border-t border-slate-200 pt-2 text-base font-semibold">
+					<span>Итого</span><span>{formatMoney(detailCheck.total_cents)}</span>
+				</p>
 			</div>
 		</div>
 	</div>
