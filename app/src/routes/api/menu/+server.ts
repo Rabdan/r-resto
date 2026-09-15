@@ -17,7 +17,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 			`SELECT id, category_id, title, description, price_cents, image_path, is_available
 			 FROM menu_items
 			 WHERE location_id = ? AND is_active = 1
-			 ORDER BY title`
+			 ORDER BY sort_order, id`
 		)
 		.all(locationId);
 

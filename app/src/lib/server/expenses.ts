@@ -36,10 +36,14 @@ export function expensesTotalForShift(db: Database.Database, shiftId: number): n
 	return row.n;
 }
 
-export function getOpenShiftId(db: Database.Database, locationId: number): number | null {
+export function getOpenShiftId(
+	db: Database.Database,
+	locationId: number,
+	hallId: number
+): number | null {
 	const row = db
-		.prepare(`SELECT id FROM shifts WHERE location_id = ? AND status = 'open'`)
-		.get(locationId) as { id: number } | undefined;
+		.prepare(`SELECT id FROM shifts WHERE location_id = ? AND hall_id = ? AND status = 'open'`)
+		.get(locationId, hallId) as { id: number } | undefined;
 	return row?.id ?? null;
 }
 
@@ -47,6 +51,7 @@ export function createExpense(
 	db: Database.Database,
 	opts: {
 		locationId: number;
+		hallId: number;
 		userId: number;
 		amountCents: number;
 		paymentMethod: 'cash' | 'cashless';
@@ -54,7 +59,7 @@ export function createExpense(
 		createdAt: string | null;
 	}
 ): { id: number } | { error: string } {
-	const shiftId = getOpenShiftId(db, opts.locationId);
+	const shiftId = getOpenShiftId(db, opts.locationId, opts.hallId);
 	if (!shiftId) return { error: 'no_open_shift' };
 	if (!Number.isInteger(opts.amountCents) || opts.amountCents <= 0) {
 		return { error: 'invalid_amount' };

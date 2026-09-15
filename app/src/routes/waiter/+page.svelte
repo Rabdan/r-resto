@@ -42,15 +42,15 @@
 			onPosEvent('ORDER_CREATED', reload),
 			onPosEvent('ORDER_UPDATED', reload),
 			onPosEvent('ITEM_STATUS_CHANGED', reload),
-			onPosEvent('SHIFT_OPENED', () => {
-				shiftOpen = true;
-				reload();
-			}),
-			onPosEvent('SHIFT_CLOSED', () => {
-				shiftOpen = false;
+		onPosEvent('SHIFT_OPENED', (ev) => {
+			if (eventHallMatches(ev)) reload();
+		}),
+		onPosEvent('SHIFT_CLOSED', (ev) => {
+			if (eventHallMatches(ev)) {
 				message = 'Смена закрыта';
 				reload();
-			})
+			}
+		})
 		];
 		const tick = setInterval(() => {
 			now = Date.now();
@@ -70,6 +70,7 @@
 		const savedId = Number(localStorage.getItem(key));
 		const exists = halls.some((h) => h.id === savedId);
 		hallId = exists ? savedId : (halls[0]?.id ?? null);
+		void loadOrders();
 	}
 
 	function changeHall(id: number | null) {
@@ -78,10 +79,21 @@
 		if (device?.locationId != null) {
 			localStorage.setItem(`waiter_hall_${device.locationId}`, String(id));
 		}
+		void loadOrders();
+	}
+
+	function eventHallMatches(ev: { data: string }): boolean {
+		try {
+			const data = JSON.parse(ev.data) as { hallId?: number };
+			return hallId == null || data.hallId == null || data.hallId === hallId;
+		} catch {
+			return true;
+		}
 	}
 
 	async function loadOrders() {
-		const res = await fetch(`/api/orders?tab=${tab === 'closed' ? 'closed' : 'open'}`);
+		const hallParam = hallId != null ? `&hallId=${hallId}` : '';
+		const res = await fetch(`/api/orders?tab=${tab === 'closed' ? 'closed' : 'open'}${hallParam}`);
 		if (!res.ok) return;
 		const data = await res.json();
 		orders = data.orders ?? [];

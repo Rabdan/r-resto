@@ -289,6 +289,32 @@
 		await load();
 	}
 
+	async function moveItemDirection(item: Item, direction: 'up' | 'down') {
+		const res = await fetch(`/api/admin/menu/items/${item.id}/move`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ direction })
+		});
+		if (!res.ok) {
+			error = 'Не удалось переставить товар';
+			return;
+		}
+		await load();
+	}
+
+	async function moveCategoryDirection(cat: Category, direction: 'up' | 'down') {
+		const res = await fetch(`/api/admin/menu/categories/${cat.id}/move`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ direction })
+		});
+		if (!res.ok) {
+			error = 'Не удалось переставить категорию';
+			return;
+		}
+		await load();
+	}
+
 	async function deleteItem(item: Item) {
 		if (!confirm(`Удалить товар «${item.title}»?`)) return;
 		const res = await fetch(`/api/admin/menu/items/${item.id}`, { method: 'DELETE' });
@@ -357,6 +383,24 @@
 				>
 					{cat.name}
 				</button>
+				<div class="flex shrink-0 flex-col">
+					<button
+						type="button"
+						onclick={() => moveCategoryDirection(cat, 'up')}
+						aria-label="Вверх"
+						class="flex h-5 w-7 items-center justify-center text-xs text-white/70 hover:text-white"
+					>
+						▲
+					</button>
+					<button
+						type="button"
+						onclick={() => moveCategoryDirection(cat, 'down')}
+						aria-label="Вниз"
+						class="flex h-5 w-7 items-center justify-center text-xs text-white/70 hover:text-white"
+					>
+						▼
+					</button>
+				</div>
 				<span class="shrink-0 px-1 text-xs font-semibold text-white/80">{cat.items.length}</span>
 				<button
 					type="button"
@@ -417,6 +461,24 @@
 											<span class="ml-2 text-rose-600">Стоп-лист</span>
 										{/if}
 									</p>
+								</div>
+								<div class="flex shrink-0 flex-col">
+									<button
+										type="button"
+										onclick={() => moveItemDirection(item, 'up')}
+										aria-label="Вверх"
+										class="flex h-5 w-8 items-center justify-center text-slate-400 hover:text-slate-700"
+									>
+										▲
+									</button>
+									<button
+										type="button"
+										onclick={() => moveItemDirection(item, 'down')}
+										aria-label="Вниз"
+										class="flex h-5 w-8 items-center justify-center text-slate-400 hover:text-slate-700"
+									>
+										▼
+									</button>
 								</div>
 								<button
 									type="button"

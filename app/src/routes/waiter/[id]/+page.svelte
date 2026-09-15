@@ -127,11 +127,11 @@
 				/* ignore */
 			}
 		});
-		const offShiftClosed = onPosEvent('SHIFT_CLOSED', () => {
-			shiftOpen = false;
+		const offShiftClosed = onPosEvent('SHIFT_CLOSED', (ev) => {
+			if (eventHallMatches(ev)) shiftOpen = false;
 		});
-		const offShiftOpened = onPosEvent('SHIFT_OPENED', () => {
-			shiftOpen = true;
+		const offShiftOpened = onPosEvent('SHIFT_OPENED', (ev) => {
+			if (eventHallMatches(ev)) shiftOpen = true;
 		});
 		const offUpdated = onPosEvent('ORDER_UPDATED', (ev) => {
 			try {
@@ -175,6 +175,7 @@
 		}
 		const data = await orderRes.json();
 		applyOrder(data.order);
+		void loadShiftStatus();
 		if (data.order?.status === 'open') await loadMenu();
 		if (page.url.searchParams.get('pay') === '1' && data.order?.status === 'open') openPay();
 		if (page.url.searchParams.get('print') === '1') void printCheck();
@@ -199,6 +200,23 @@
 		menu = m.items ?? [];
 	}
 
+	async function loadShiftStatus() {
+		const hallParam = hallId != null ? `&hallId=${hallId}` : '';
+		const res = await fetch(`/api/orders?tab=open${hallParam}`);
+		if (!res.ok) return;
+		const data = await res.json();
+		if (typeof data.shiftOpen === 'boolean') shiftOpen = data.shiftOpen;
+	}
+
+	function eventHallMatches(ev: { data: string }): boolean {
+		try {
+			const data = JSON.parse(ev.data) as { hallId?: number };
+			return hallId == null || data.hallId == null || data.hallId === hallId;
+		} catch {
+			return true;
+		}
+	}
+
 	async function bootDraft() {
 		const hallParam = Number(page.url.searchParams.get('hallId'));
 		const [, hallsRes] = await Promise.all([loadMenu(), fetch('/api/halls')]);
@@ -213,6 +231,7 @@
 				hallQrPath = selected.qr_image_path ?? null;
 			}
 		}
+		void loadShiftStatus();
 		const firstGuest: Guest = {
 			id: nextGuestId(),
 			name: 'Гость 1',
@@ -537,6 +556,10 @@
 
 	async function fire() {
 		if (isClosed) return;
+		if (!shiftOpen) {
+			error = 'Смена закрыта';
+			return;
+		}
 		if (isDraft) {
 			await commitDraft({ fired: true });
 			return;
@@ -545,7 +568,7 @@
 	}
 
 	async function pay(p: { cashlessCents: number; cashReceivedCents: number }) {
-		if (!payGuestId || isClosed) return;
+		if (!payGuestId || isClosed || !shiftOpen) return;
 		payError = null;
 		if (isDraft) {
 			const ok = await commitDraft({
@@ -587,6 +610,10 @@
 		navigateTo?: string;
 	}): Promise<boolean> {
 		error = null;
+		if (!shiftOpen) {
+			error = 'Смена закрыта';
+			return false;
+		}
 		const payload = {
 			hallId: hallId ?? undefined,
 			guests: guests.map((g) => g.name),
@@ -639,6 +666,10 @@
 
 	function openPay() {
 		if (isClosed) return;
+		if (!shiftOpen) {
+			error = 'Смена закрыта';
+			return;
+		}
 		const unpaid = guests.filter((g) => !g.is_paid && guestTotal(g.id) > 0);
 		payGuestId = unpaid[0]?.id ?? null;
 		payError = null;
@@ -807,14 +838,19 @@
 							<button
 								type="button"
 								onclick={fire}
-								disabled={heldCount === 0}
-								class="h-12 rounded-md border text-base font-bold {heldCount === 0
+								disabled={heldCount === 0 || !shiftOpen}
+								class="h-12 rounded-md border text-base font-bold disabled:opacity-50 {heldCount === 0 || !shiftOpen
 									? 'border-slate-200 bg-transparent text-slate-400'
 									: 'border-sky-800 bg-sky-600 text-white'}"
 							>
 								На кухню
 							</button>
-							<button type="button" onclick={openPay} class="h-12 rounded-md border border-emerald-800 bg-emerald-600 text-base font-bold text-white">
+							<button
+								type="button"
+								onclick={openPay}
+								disabled={!shiftOpen}
+								class="h-12 rounded-md border border-emerald-800 bg-emerald-600 text-base font-bold text-white disabled:opacity-50"
+							>
 								Оплата
 							</button>
 						</div>

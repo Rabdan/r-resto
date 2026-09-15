@@ -60,6 +60,8 @@ export type CancelledOrder = {
 
 export type ShiftRow = {
 	id: number;
+	hall_id: number | null;
+	hall_name: string | null;
 	opened_at: string;
 	closed_at: string | null;
 	status: string;
@@ -250,9 +252,10 @@ function buildZReport(
 export function listShifts(db: Database.Database, locationId: number): ShiftRow[] {
 	const shifts = db
 		.prepare(
-			`SELECT s.id, s.opened_at, s.closed_at, s.status,
+			`SELECT s.id, s.hall_id, h.name AS hall_name, s.opened_at, s.closed_at, s.status,
 			        ou.name AS opened_by, cu.name AS closed_by
 			 FROM shifts s
+			 LEFT JOIN halls h ON h.id = s.hall_id
 			 LEFT JOIN users ou ON ou.id = s.opened_by_user_id
 			 LEFT JOIN users cu ON cu.id = s.closed_by_user_id
 			 WHERE s.location_id = ?
@@ -260,7 +263,10 @@ export function listShifts(db: Database.Database, locationId: number): ShiftRow[
 			 LIMIT 50`
 		)
 		.all(locationId) as Array<
-		Pick<ShiftRow, 'id' | 'opened_at' | 'closed_at' | 'status' | 'opened_by' | 'closed_by'>
+		Pick<
+			ShiftRow,
+			'id' | 'hall_id' | 'hall_name' | 'opened_at' | 'closed_at' | 'status' | 'opened_by' | 'closed_by'
+		>
 	>;
 
 	const zStmt = db.prepare(
@@ -309,6 +315,8 @@ export function listShifts(db: Database.Database, locationId: number): ShiftRow[
 
 		return {
 			id: s.id,
+			hall_id: s.hall_id,
+			hall_name: s.hall_name,
 			opened_at: s.opened_at,
 			closed_at: s.closed_at,
 			status: s.status,
@@ -334,14 +342,40 @@ export function getZReport(db: Database.Database, locationId: number, shiftId: n
 	return listShifts(db, locationId).find((s) => s.id === shiftId)?.z ?? null;
 }
 
-export function closeOpenShift(
+export function openShiftForHall(
 	db: Database.Database,
 	locationId: number,
+	hallId: number,
+	userId: number
+): { id: number } | { error: string } {
+	const hall = db
+		.prepare(`SELECT id FROM halls WHERE id = ? AND location_id = ?`)
+		.get(hallId, locationId) as { id: number } | undefined;
+	if (!hall) return { error: 'hall_not_found' };
+
+	const open = db
+		.prepare(`SELECT id FROM shifts WHERE location_id = ? AND hall_id = ? AND status = 'open'`)
+		.get(locationId, hallId) as { id: number } | undefined;
+	if (open) return { error: 'already_open' };
+
+	const info = db
+		.prepare(
+			`INSERT INTO shifts (location_id, hall_id, opened_by_user_id, status) VALUES (?, ?, ?, 'open')`
+		)
+		.run(locationId, hallId, userId);
+
+	return { id: Number(info.lastInsertRowid) };
+}
+
+export function closeOpenShiftForHall(
+	db: Database.Database,
+	locationId: number,
+	hallId: number,
 	userId: number
 ): { shiftId: number; z: Omit<ZReport, 'shift_id' | 'created_at'> } | { error: string } {
 	const shift = db
-		.prepare(`SELECT id FROM shifts WHERE location_id = ? AND status = 'open'`)
-		.get(locationId) as { id: number } | undefined;
+		.prepare(`SELECT id FROM shifts WHERE location_id = ? AND hall_id = ? AND status = 'open'`)
+		.get(locationId, hallId) as { id: number } | undefined;
 	if (!shift) return { error: 'no_open_shift' };
 
 	if (openOrdersCount(db, shift.id) > 0) return { error: 'open_orders' };

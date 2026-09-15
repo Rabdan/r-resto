@@ -6,6 +6,7 @@
 	type KdsItem = {
 		id: number;
 		title: string;
+		description: string | null;
 		quantity: number;
 		status: string;
 		ready_at: string | null;
@@ -183,7 +184,12 @@
 														class="h-10 w-10 shrink-0 rounded object-cover"
 													/>
 												{/if}
-												<span class="min-w-0 truncate">{item.title}</span>
+												<span class="min-w-0 flex-1">
+													<span class="block truncate">{item.title}</span>
+													{#if item.description}
+														<span class="block truncate text-xs font-normal text-slate-500">{item.description}</span>
+													{/if}
+												</span>
 											</span>
 											<span class="shrink-0">×{item.quantity}</span>
 										</button>

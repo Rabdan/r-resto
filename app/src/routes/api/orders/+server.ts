@@ -14,23 +14,31 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 	const locationId = locals.device!.locationId;
 	const tab = url.searchParams.get('tab') === 'closed' ? 'closed' : 'open';
+	const hallId = Number(url.searchParams.get('hallId') || 0);
 
+	const openShiftStmt = db.prepare(
+		`SELECT id FROM shifts WHERE location_id = ? AND status = 'open' ${hallId ? 'AND hall_id = ?' : ''} LIMIT 1`
+	);
 	const shiftOpen = !!(
-		db
-			.prepare(`SELECT id FROM shifts WHERE location_id = ? AND status = 'open' LIMIT 1`)
-			.get(locationId) as { id: number } | undefined
+		(hallId ? openShiftStmt.get(locationId, hallId) : openShiftStmt.get(locationId)) as
+			| { id: number }
+			| undefined
 	);
 
 	if (tab === 'closed') {
+		const lastClosedStmt = db.prepare(
+			`SELECT id FROM shifts WHERE location_id = ? AND status = 'closed' ${
+				hallId ? 'AND hall_id = ?' : ''
+			} ORDER BY id DESC LIMIT 1`
+		);
+		const openShift = (hallId
+			? openShiftStmt.get(locationId, hallId)
+			: openShiftStmt.get(locationId)) as { id: number } | undefined;
 		const shift =
-			(db
-				.prepare(`SELECT id FROM shifts WHERE location_id = ? AND status = 'open' LIMIT 1`)
-				.get(locationId) as { id: number } | undefined) ??
-			(db
-				.prepare(
-					`SELECT id FROM shifts WHERE location_id = ? AND status = 'closed' ORDER BY id DESC LIMIT 1`
-				)
-				.get(locationId) as { id: number } | undefined);
+			openShift ??
+			((hallId
+				? lastClosedStmt.get(locationId, hallId)
+				: lastClosedStmt.get(locationId)) as { id: number } | undefined);
 
 		if (!shift) return json({ orders: [], shiftOpen });
 
@@ -149,8 +157,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (!hall) return json({ error: 'hall not found' }, { status: 400 });
 
 	const shift = db
-		.prepare(`SELECT id FROM shifts WHERE location_id = ? AND status = 'open'`)
-		.get(locationId) as { id: number } | undefined;
+		.prepare(`SELECT id FROM shifts WHERE location_id = ? AND hall_id = ? AND status = 'open'`)
+		.get(locationId, hall.id) as { id: number } | undefined;
 
 	if (!shift) {
 		return json({ error: 'shift_closed', message: 'Смена закрыта' }, { status: 409 });

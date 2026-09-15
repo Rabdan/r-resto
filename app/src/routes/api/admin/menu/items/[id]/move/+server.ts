@@ -16,7 +16,33 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
 		.get(id, locationId) as { id: number; category_id: number } | undefined;
 	if (!item) return json({ error: 'not_found' }, { status: 404 });
 
-	const body = (await request.json().catch(() => ({}))) as { category_id?: number };
+	const body = (await request.json().catch(() => ({}))) as {
+		category_id?: number;
+		direction?: 'up' | 'down';
+	};
+
+	if (body.direction === 'up' || body.direction === 'down') {
+		const siblings = db
+			.prepare(
+				`SELECT id, sort_order FROM menu_items
+				 WHERE category_id = ? AND is_active = 1
+				 ORDER BY sort_order, id`
+			)
+			.all(item.category_id) as Array<{ id: number; sort_order: number }>;
+		const idx = siblings.findIndex((s) => s.id === id);
+		if (idx < 0) return json({ ok: true });
+		const targetIdx = body.direction === 'up' ? idx - 1 : idx + 1;
+		if (targetIdx < 0 || targetIdx >= siblings.length) return json({ ok: true });
+		const a = siblings[idx];
+		const b = siblings[targetIdx];
+		db.transaction(() => {
+			db.prepare(`UPDATE menu_items SET sort_order = ? WHERE id = ?`).run(b.sort_order, a.id);
+			db.prepare(`UPDATE menu_items SET sort_order = ? WHERE id = ?`).run(a.sort_order, b.id);
+		})();
+		broadcast('MENU_UPDATED', {});
+		return json({ ok: true });
+	}
+
 	const categoryId = Number(body.category_id);
 	if (!categoryId || categoryId === item.category_id) {
 		return json({ ok: true });

@@ -49,6 +49,8 @@
 	};
 	type Shift = {
 		id: number;
+		hall_id: number | null;
+		hall_name: string | null;
 		opened_at: string;
 		closed_at: string | null;
 		status: string;
@@ -89,6 +91,8 @@
 	const presets = ['Ошибка ввода', 'Отказ гостя'];
 
 	let shifts = $state<Shift[]>([]);
+	let halls = $state<Array<{ id: number; name: string }>>([]);
+	let selectedHallId = $state<number | null>(null);
 	let message = $state<string | null>(null);
 	let error = $state<string | null>(null);
 	let expanded = $state<number | null>(null);
@@ -113,8 +117,17 @@
 
 	let detailCheck = $state<ClosedCheck | null>(null);
 
-	const openShift = $derived(shifts.find((s) => s.status === 'open') ?? null);
-	const closedShifts = $derived(shifts.filter((s) => s.status === 'closed'));
+	const openShift = $derived(
+		selectedHallId == null
+			? null
+			: (shifts.find((s) => s.hall_id === selectedHallId && s.status === 'open') ?? null)
+	);
+	const closedShifts = $derived(
+		selectedHallId == null
+			? []
+			: shifts.filter((s) => s.hall_id === selectedHallId && s.status === 'closed')
+	);
+	const selectedHall = $derived(halls.find((h) => h.id === selectedHallId) ?? null);
 	const pendingShortfall = $derived(
 		(openShift?.closed_checks ?? []).reduce((sum, c) => sum + c.shortfall_cents, 0)
 	);
@@ -131,13 +144,29 @@
 			return;
 		}
 		const data = await res.json();
+		halls = data.halls ?? [];
 		shifts = data.shifts ?? [];
+		if (selectedHallId == null || !halls.some((h) => h.id === selectedHallId)) {
+			selectedHallId = halls[0]?.id ?? null;
+		}
+	}
+
+	function selectHall(id: number) {
+		selectedHallId = id;
+		tab = 'open';
+		message = null;
+		error = null;
 	}
 
 	async function openNewShift() {
+		if (selectedHallId == null) return;
 		message = null;
 		error = null;
-		const res = await fetch('/api/shifts', { method: 'POST' });
+		const res = await fetch('/api/shifts', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ hallId: selectedHallId })
+		});
 		const data = await res.json();
 		if (!res.ok) {
 			error = data.error === 'already_open' ? 'Смена уже открыта' : 'Ошибка открытия смены';
@@ -149,9 +178,14 @@
 	}
 
 	async function closeShift() {
+		if (selectedHallId == null) return;
 		message = null;
 		error = null;
-		const res = await fetch('/api/admin/shifts/close', { method: 'POST' });
+		const res = await fetch('/api/admin/shifts/close', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ hallId: selectedHallId })
+		});
 		const data = await res.json();
 		if (!res.ok) {
 			error = data.error ?? 'Ошибка закрытия смены';
@@ -234,7 +268,7 @@
 	}
 
 	async function addExpense() {
-		if (!openShift) return;
+		if (!openShift || selectedHallId == null) return;
 		error = null;
 		message = null;
 		const amount = parseMoney(expAmount);
@@ -252,6 +286,7 @@
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
+				hall_id: selectedHallId,
 				amount_cents: amount,
 				payment_method: expMethod,
 				comment: expComment.trim(),
@@ -297,6 +332,24 @@
 
 <header class="bg-slate-50 px-4 py-3 font-semibold">Смена</header>
 <div class="space-y-4 px-4 py-4">
+	{#if halls.length > 0}
+		<div class="flex gap-2 overflow-x-auto pb-1">
+			{#each halls as hall}
+				<button
+					type="button"
+					onclick={() => selectHall(hall.id)}
+					class="h-10 shrink-0 rounded-md px-4 text-sm font-semibold {selectedHallId === hall.id
+						? 'bg-emerald-600 text-white'
+						: 'bg-white text-slate-700'}"
+				>
+					{hall.name}
+				</button>
+			{/each}
+		</div>
+	{:else}
+		<p class="text-sm text-slate-500">Нет торговых залов</p>
+	{/if}
+
 	{#if error}
 		<p class="text-sm text-rose-600">{error}</p>
 	{/if}
@@ -306,7 +359,7 @@
 
 	{#if openShift}
 		<div class="rounded-md border-2 border-emerald-500 bg-white p-4">
-			<p class="font-semibold">Смена №{openShift.id} открыта</p>
+			<p class="font-semibold">Смена зала «{selectedHall?.name ?? ''}» открыта</p>
 			<p class="text-sm text-slate-500">Открыта: {datetimeLabel(openShift.opened_at)}</p>
 			<button
 				type="button"
@@ -617,13 +670,15 @@
 			</div>
 		</section>
 	{:else}
-		<button
-			type="button"
-			onclick={() => void openNewShift()}
-			class="h-10 w-full rounded-md bg-emerald-600 text-sm font-semibold text-white"
-		>
-			Открыть смену
-		</button>
+		{#if selectedHallId != null}
+			<button
+				type="button"
+				onclick={() => void openNewShift()}
+				class="h-10 w-full rounded-md bg-emerald-600 text-sm font-semibold text-white"
+			>
+				Открыть смену
+			</button>
+		{/if}
 	{/if}
 
 	<h2 class="pt-2 text-sm font-semibold uppercase tracking-wide text-slate-500">Закрытые смены</h2>

@@ -11,11 +11,15 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (!locationId) return json({ error: 'no_location' }, { status: 400 });
 
 	const body = (await request.json().catch(() => ({}))) as {
+		hall_id?: number;
 		amount_cents?: number;
 		payment_method?: string;
 		comment?: string;
 		created_at?: string;
 	};
+
+	const hallId = Number(body.hall_id);
+	if (!hallId) return json({ error: 'Укажи зал' }, { status: 400 });
 
 	const amountCents = Math.round(Number(body.amount_cents));
 	const paymentMethod = body.payment_method;
@@ -33,6 +37,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	const result = createExpense(db, {
 		locationId,
+		hallId,
 		userId: locals.admin!.id,
 		amountCents,
 		paymentMethod,

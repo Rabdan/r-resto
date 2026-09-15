@@ -16,6 +16,7 @@ type ItemRow = {
 	id: number;
 	order_id: number;
 	title: string;
+	description: string | null;
 	quantity: number;
 	status: string;
 	ready_at: string | null;
@@ -53,7 +54,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 
 	const items = db
 		.prepare(
-			`SELECT i.id, i.order_id, i.title, i.quantity, i.status, i.ready_at, m.image_path
+			`SELECT i.id, i.order_id, i.title, m.description, i.quantity, i.status, i.ready_at, m.image_path
 			 FROM order_items i
 			 JOIN orders o ON o.id = i.order_id
 			 LEFT JOIN menu_items m ON m.id = i.menu_item_id
@@ -76,6 +77,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 			items: (byOrder.get(card.order_id) ?? []).map((item) => ({
 				id: item.id,
 				title: item.title,
+				description: item.description,
 				quantity: item.quantity,
 				status: item.status,
 				ready_at: item.ready_at,

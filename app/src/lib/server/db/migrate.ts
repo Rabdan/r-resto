@@ -15,6 +15,7 @@ import sql013 from './migrations/013_item_ready_at.sql?raw';
 import sql014 from './migrations/014_timezone.sql?raw';
 import sql015 from './migrations/015_partial_payments.sql?raw';
 import sql016 from './migrations/016_order_number.sql?raw';
+import sql017 from './migrations/017_hall_shifts.sql?raw';
 import { hashPin } from '../pin';
 
 const migrations: Array<{ id: string; sql: string }> = [
@@ -33,7 +34,8 @@ const migrations: Array<{ id: string; sql: string }> = [
 	{ id: '013_item_ready_at.sql', sql: sql013 },
 	{ id: '014_timezone.sql', sql: sql014 },
 	{ id: '015_partial_payments.sql', sql: sql015 },
-	{ id: '016_order_number.sql', sql: sql016 }
+	{ id: '016_order_number.sql', sql: sql016 },
+	{ id: '017_hall_shifts.sql', sql: sql017 }
 ];
 
 const DEFAULT_SUPERADMIN_PIN = '1708';
