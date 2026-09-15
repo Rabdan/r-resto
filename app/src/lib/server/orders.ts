@@ -4,6 +4,7 @@ import { deviceHasRole } from '$lib/types';
 
 export type OrderRow = {
 	id: number;
+	number: number;
 	location_id: number;
 	hall_id: number;
 	waiter_id: number;
@@ -44,7 +45,7 @@ export function waiterLocationId(locals: App.Locals): number | null {
 export function getOpenOrder(orderId: number, locationId: number): OrderRow | null {
 	const row = db
 		.prepare(
-			`SELECT id, location_id, hall_id, waiter_id, status, total_amount_cents
+			`SELECT id, number, location_id, hall_id, waiter_id, status, total_amount_cents
 			 FROM orders WHERE id = ? AND location_id = ?`
 		)
 		.get(orderId, locationId) as OrderRow | undefined;
@@ -63,7 +64,7 @@ export function refreshOrderTotal(orderId: number): void {
 export function loadOrder(orderId: number, locationId: number) {
 	const order = db
 		.prepare(
-			`SELECT o.id, o.status, o.total_amount_cents, o.created_at, o.hall_id,
+			`SELECT o.id, o.number, o.status, o.total_amount_cents, o.created_at, o.hall_id,
 			        h.name AS hall_name, h.color_hex AS hall_color, h.qr_image_path
 			 FROM orders o
 			 JOIN halls h ON h.id = o.hall_id
@@ -72,6 +73,7 @@ export function loadOrder(orderId: number, locationId: number) {
 		.get(orderId, locationId) as
 		| {
 				id: number;
+				number: number;
 				status: string;
 				total_amount_cents: number;
 				created_at: string;

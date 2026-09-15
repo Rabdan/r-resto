@@ -19,8 +19,8 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	}
 
 	const order = db
-		.prepare(`SELECT id, status FROM orders WHERE id = ? AND location_id = ?`)
-		.get(orderId, locationId) as { id: number; status: string } | undefined;
+		.prepare(`SELECT id, number, status FROM orders WHERE id = ? AND location_id = ?`)
+		.get(orderId, locationId) as { id: number; number: number; status: string } | undefined;
 	if (!order) return json({ error: 'not_found' }, { status: 404 });
 	if (order.status !== 'open') {
 		return json({ error: 'not_open' }, { status: 409 });
@@ -37,6 +37,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 
 	broadcast('ORDER_CANCELLED', {
 		orderId,
+		number: order.number,
 		locationId,
 		reason,
 		cancelledBy: locals.admin!.name

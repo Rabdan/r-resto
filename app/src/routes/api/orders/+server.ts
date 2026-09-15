@@ -36,16 +36,17 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 		const rows = db
 			.prepare(
-				`SELECT o.id, o.created_at, o.closed_at, o.total_amount_cents, o.hall_id,
+				`SELECT o.id, o.number, o.created_at, o.closed_at, o.total_amount_cents, o.hall_id,
 				        u.name AS waiter_name, h.name AS hall_name
 				 FROM orders o
 				 JOIN users u ON u.id = o.waiter_id
 				 JOIN halls h ON h.id = o.hall_id
 				 WHERE o.location_id = ? AND o.status = 'closed' AND o.shift_id = ?
-				 ORDER BY o.closed_at ASC, o.id ASC`
+				 ORDER BY o.number ASC`
 			)
 			.all(locationId, shift.id) as Array<{
 			id: number;
+			number: number;
 			created_at: string;
 			closed_at: string | null;
 			total_amount_cents: number;
@@ -66,7 +67,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 	const rows = db
 		.prepare(
-			`SELECT o.id, o.status, o.total_amount_cents, o.created_at, o.hall_id,
+			`SELECT o.id, o.number, o.status, o.total_amount_cents, o.created_at, o.hall_id,
 			        u.name AS waiter_name, h.name AS hall_name
 			 FROM orders o
 			 JOIN users u ON u.id = o.waiter_id
@@ -76,6 +77,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		)
 		.all(locationId) as Array<{
 		id: number;
+		number: number;
 		status: string;
 		total_amount_cents: number;
 		created_at: string;
@@ -226,12 +228,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	const result = db.transaction(() => {
+		const next = db
+			.prepare(
+				`SELECT COALESCE(MAX(number), 0) + 1 AS n FROM orders WHERE shift_id = ?`
+			)
+			.get(shift.id) as { n: number };
 		const info = db
 			.prepare(
-				`INSERT INTO orders (location_id, hall_id, shift_id, waiter_id, status)
-				 VALUES (@locationId, @hallId, @shiftId, @waiterId, 'open')`
+				`INSERT INTO orders (location_id, hall_id, shift_id, waiter_id, status, number)
+				 VALUES (@locationId, @hallId, @shiftId, @waiterId, 'open', @number)`
 			)
-			.run({ locationId, hallId: hall.id, shiftId: shift.id, waiterId });
+			.run({ locationId, hallId: hall.id, shiftId: shift.id, waiterId, number: next.n });
 		const id = Number(info.lastInsertRowid);
 
 		const guestIds: number[] = [];

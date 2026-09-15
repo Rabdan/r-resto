@@ -7,6 +7,7 @@
 	type Preview = { title: string; quantity: number };
 	export type WaiterOrder = {
 		id: number;
+		number: number;
 		status?: string;
 		total_amount_cents: number;
 		unpaid_cents?: number;
@@ -44,6 +45,7 @@
 	let axis = $state<'h' | 'v' | null>(null);
 	let startX = 0;
 	let startY = 0;
+	let lastTap = 0;
 	let longTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const readyCount = $derived(
@@ -96,7 +98,6 @@
 				axis = 'v';
 			}, 480);
 		}
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 
 	function onMove(e: PointerEvent) {
@@ -124,7 +125,15 @@
 			axis = null;
 			return;
 		}
-		if (axis == null) onOpen();
+		if (axis == null) {
+			const nowTs = Date.now();
+			if (nowTs - lastTap < 300) {
+				lastTap = 0;
+				onOpen();
+			} else {
+				lastTap = nowTs;
+			}
+		}
 		dx = 0;
 		axis = null;
 	}
@@ -135,7 +144,7 @@
 		role="button"
 		tabindex="0"
 		class="relative z-10 rounded-md border border-slate-300 bg-white p-4"
-		style="transform: translateX({dx}px)"
+		style="transform: translateX({dx}px); touch-action: pan-y"
 		onpointerdown={onDown}
 		onpointermove={onMove}
 		onpointerup={onUp}
@@ -149,7 +158,7 @@
 	>
 		<div class="flex items-center justify-between gap-2">
 			<span class="flex min-w-0 items-center gap-2">
-				<span class="text-base font-bold">{closed ? 'Чек' : 'Заказ'} №{order.id}</span>
+				<span class="text-base font-bold">{closed ? 'Чек' : 'Заказ'} №{order.number}</span>
 				{#if readyCount > 0}
 					<span
 						class="rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-bold text-white"
@@ -189,7 +198,7 @@
 	{#if sheet}
 		<div class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
 			<div class="w-full max-w-sm rounded-md border border-slate-300 bg-slate-100 p-4">
-				<p class="text-lg font-bold">Заказ №{order.id}</p>
+				<p class="text-lg font-bold">Заказ №{order.number}</p>
 				<div class="mt-4 grid gap-2">
 					<button
 						type="button"

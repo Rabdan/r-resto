@@ -30,8 +30,9 @@
 		const offs = [
 			onPosEvent('ORDER_CANCELLED', (ev) => {
 				try {
-					const data = JSON.parse(ev.data) as { orderId?: number };
-					message = data.orderId ? `Заказ №${data.orderId} отменён админом` : 'Заказ отменён админом';
+					const data = JSON.parse(ev.data) as { orderId?: number; number?: number };
+					const n = data.number ?? data.orderId;
+					message = n ? `Заказ №${n} отменён админом` : 'Заказ отменён админом';
 				} catch {
 					message = 'Заказ отменён админом';
 				}

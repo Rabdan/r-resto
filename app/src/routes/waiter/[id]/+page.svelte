@@ -29,6 +29,7 @@
 	type Item = OrderLine & { menu_item_id: number | null };
 	type OrderDetail = {
 		id: number;
+		number: number;
 		status: string;
 		total_amount_cents: number;
 		created_at?: string;
@@ -61,6 +62,7 @@
 	let hallQrPath = $state<string | null>(null);
 	let createdAt = $state<string | null>(null);
 	let orderStatus = $state('open');
+	let orderNumber = $state<number | null>(null);
 	const isClosed = $derived(orderStatus === 'closed');
 
 	let categories = $state<Category[]>([]);
@@ -235,6 +237,7 @@
 		hallName = next.hall_name;
 		hallColor = next.hall_color;
 		orderStatus = next.status;
+		orderNumber = next.number ?? null;
 		if (next.hall_id != null) hallId = next.hall_id;
 		if (next.qr_image_path !== undefined) hallQrPath = next.qr_image_path ?? null;
 		if (next.created_at) createdAt = next.created_at;
@@ -653,7 +656,7 @@
 		try {
 			const data = orderToReceiptData({
 				hallName,
-				orderId,
+				orderId: orderNumber ?? orderId,
 				isDraft,
 				isClosed,
 				createdAt,
@@ -664,7 +667,7 @@
 			});
 			const blob = await renderReceiptPng(data);
 			await shareReceipt(blob, {
-				orderId,
+				orderId: orderNumber ?? orderId,
 				hallName,
 				totalLabel: formatMoney(totalCents)
 			});
@@ -678,7 +681,7 @@
 </script>
 
 <svelte:head>
-	<title>{isDraft ? 'Новый заказ' : isClosed ? `Чек №${orderId}` : `Заказ №${orderId}`}</title>
+	<title>{isDraft ? 'Новый заказ' : isClosed ? `Чек №${orderNumber ?? orderId}` : `Заказ №${orderNumber ?? orderId}`}</title>
 </svelte:head>
 
 <div class="flex h-dvh flex-col bg-slate-50 print:hidden">
@@ -705,7 +708,7 @@
 		<div class="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3">
 			<div class="min-w-0 flex-1">
 				<p class="text-lg font-bold uppercase tracking-wide text-emerald-600">
-					{isClosed ? 'Чек' : 'Заказ'}
+					{isClosed ? 'Чек' : 'Заказ'}{orderNumber != null ? ` №${orderNumber}` : ''}
 				</p>
 				<p class="truncate text-lg font-bold">
 					{itemCount} поз. — <span class="text-rose-600 text-xl">{formatMoney(totalCents)}</span>

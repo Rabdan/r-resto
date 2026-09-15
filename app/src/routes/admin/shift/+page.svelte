@@ -14,6 +14,7 @@
 	type Guest = { name: string; is_paid: number };
 	type OpenOrder = {
 		id: number;
+		number: number;
 		created_at: string;
 		waiter_name: string;
 		hall_name: string;
@@ -23,16 +24,20 @@
 	};
 	type ClosedCheck = {
 		id: number;
+		number: number;
 		created_at: string;
 		closed_at: string | null;
 		waiter_name: string;
 		hall_name: string;
 		total_cents: number;
+		cash_cents: number;
+		cashless_cents: number;
 		shortfall_cents: number;
 		writeoff_cents: number;
 	};
 	type CancelledOrder = {
 		id: number;
+		number: number;
 		created_at: string;
 		cancelled_at: string | null;
 		cancel_reason: string | null;
@@ -353,7 +358,7 @@
 					<article class="rounded-md border border-slate-200 bg-white p-4">
 						<div class="flex items-start justify-between gap-2">
 							<div>
-								<p class="font-semibold">Заказ №{order.id}</p>
+								<p class="font-semibold">Заказ №{order.number}</p>
 								<p class="text-sm text-slate-500">
 									{order.waiter_name} · {order.hall_name}
 								</p>
@@ -390,11 +395,17 @@
 					{#each openShift.closed_checks as order}
 						<li class="rounded-md border border-slate-200 bg-white p-3">
 							<div class="flex justify-between gap-2">
-								<span class="font-semibold">Чек №{order.id}</span>
+								<span class="font-semibold">Чек №{order.number}</span>
 								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
 							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
 							<p class="text-xs text-slate-500">Закрыт: {datetimeLabel(order.closed_at)}</p>
+							{#if order.cashless_cents > 0}
+								<p class="mt-1 text-sm text-slate-700">Безнал: {formatMoney(order.cashless_cents)}</p>
+							{/if}
+							{#if order.cash_cents > 0}
+								<p class="mt-1 text-sm text-slate-700">Наличные: {formatMoney(order.cash_cents)}</p>
+							{/if}
 							{#if order.shortfall_cents > 0}
 								<p class="mt-1 text-sm font-semibold text-amber-600">
 									Недоплата: {formatMoney(order.shortfall_cents)}
@@ -424,7 +435,7 @@
 					{#each openShift.cancelled as order}
 						<li class="rounded-md border border-slate-200 bg-slate-100 p-3 text-sm">
 							<div class="flex justify-between">
-								<span class="font-medium">№{order.id}</span>
+								<span class="font-medium">№{order.number}</span>
 								<span>{formatMoney(order.total_cents)}</span>
 							</div>
 							<p class="text-slate-500">{order.waiter_name} · {order.cancelled_by ?? 'админ'}</p>
@@ -439,7 +450,7 @@
 					{#each openShift.open as order}
 						<li class="rounded-md border border-slate-200 bg-white p-3">
 							<div class="flex justify-between gap-2">
-								<span class="font-semibold">Заказ №{order.id}</span>
+								<span class="font-semibold">Заказ №{order.number}</span>
 								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
 							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
@@ -449,7 +460,7 @@
 					{#each openShift.closed_checks as order}
 						<li class="rounded-md border border-slate-200 bg-white p-3">
 							<div class="flex justify-between gap-2">
-								<span class="font-semibold">Чек №{order.id}</span>
+								<span class="font-semibold">Чек №{order.number}</span>
 								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
 							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
@@ -463,7 +474,7 @@
 					{#each openShift.cancelled as order}
 						<li class="rounded-md border border-slate-200 bg-slate-100 p-3">
 							<div class="flex justify-between gap-2">
-								<span class="font-semibold">№{order.id}</span>
+								<span class="font-semibold">№{order.number}</span>
 								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
 							<p class="text-sm text-slate-500">{order.waiter_name}</p>
@@ -732,7 +743,7 @@
 		<div class="w-full max-w-md rounded-md border border-slate-300 bg-slate-100 p-4">
 			<p class="font-semibold">Подтверждение отмены</p>
 			<p class="mt-1 text-sm text-slate-700">
-				Заказ №{target.id} ({target.waiter_name}) — {formatMoney(target.total_cents)}
+				Заказ №{target.number} ({target.waiter_name}) — {formatMoney(target.total_cents)}
 			</p>
 			<p class="mt-3 text-sm text-slate-500">Причина (обязательно)</p>
 			<div class="mt-2 flex flex-wrap gap-2">
@@ -773,7 +784,7 @@
 		<div class="w-full max-w-md rounded-md border border-slate-300 bg-slate-100 p-4">
 			<p class="font-semibold">Списание недоплаты</p>
 			<p class="mt-1 text-sm text-slate-700">
-				Чек №{writeoffTarget.id} ({writeoffTarget.waiter_name}) — недоплата{' '}
+				Чек №{writeoffTarget.number} ({writeoffTarget.waiter_name}) — недоплата{' '}
 				{formatMoney(writeoffTarget.shortfall_cents)}
 			</p>
 			<p class="mt-3 text-sm text-slate-500">Причина (обязательно)</p>
