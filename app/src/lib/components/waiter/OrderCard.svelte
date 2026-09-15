@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { formatMoney } from '$lib/money';
 	import { parseDbTimeMs, waiterSeesReady } from '$lib/item-ready';
+	import { formatDbTimeHm } from '$lib/time';
 
 	type GuestRef = { name: string; payment_method?: string | null };
 	type Preview = { title: string; quantity: number };
@@ -52,11 +53,7 @@
 	const unpaid = $derived(order.unpaid_cents ?? order.total_amount_cents);
 
 	function timeHm(dbTime: string | null | undefined): string {
-		if (!dbTime) return '—';
-		const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(dbTime);
-		if (!m) return dbTime;
-		const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
-		return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+		return formatDbTimeHm(dbTime);
 	}
 
 	function ageLabel(): string {

@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { requireAdmin } from '$lib/server/admin';
 import { isIsoDate } from '$lib/period';
+import { timezoneOf } from '$lib/server/timezone';
 import {
 	paymentSummary,
 	productSales,
@@ -23,13 +24,15 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		return json({ error: 'invalid_range' }, { status: 400 });
 	}
 
+	const timezone = timezoneOf(locationId);
+
 	return json({
 		from,
 		to,
-		summary: paymentSummary(db, locationId, from, to),
-		byHalls: salesByHalls(db, locationId, from, to),
-		byWaiters: salesByWaiters(db, locationId, from, to),
-		byProducts: productSales(db, locationId, from, to),
-		shifts: shiftsInRange(db, locationId, from, to)
+		summary: paymentSummary(db, locationId, from, to, timezone),
+		byHalls: salesByHalls(db, locationId, from, to, timezone),
+		byWaiters: salesByWaiters(db, locationId, from, to, timezone),
+		byProducts: productSales(db, locationId, from, to, timezone),
+		shifts: shiftsInRange(db, locationId, from, to, timezone)
 	});
 };

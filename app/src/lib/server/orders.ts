@@ -30,6 +30,10 @@ export type OrderGuest = {
 	is_paid: number;
 	payment_method: string | null;
 	amount_cents: number;
+	cash_cents: number;
+	cashless_cents: number;
+	shortfall_cents: number;
+	writeoff_cents: number;
 };
 
 export function waiterLocationId(locals: App.Locals): number | null {
@@ -81,7 +85,8 @@ export function loadOrder(orderId: number, locationId: number) {
 
 	const guests = db
 		.prepare(
-			`SELECT id, name, sort_order, is_paid, payment_method, amount_cents
+			`SELECT id, name, sort_order, is_paid, payment_method, amount_cents,
+			        cash_cents, cashless_cents, shortfall_cents, writeoff_cents
 			 FROM order_guests WHERE order_id = ? ORDER BY sort_order, id`
 		)
 		.all(orderId) as OrderGuest[];
@@ -132,23 +137,27 @@ export function mergeOrInsertHeld(opts: {
 	priceCents: number;
 	quantity: number;
 	isCustom: boolean;
+	status?: string;
+	sentAt?: string | null;
+	readyAt?: string | null;
 }): void {
+	const status = opts.status ?? 'held';
 	const existing = opts.isCustom
 		? (db
 				.prepare(
 					`SELECT id, quantity FROM order_items
-					 WHERE order_id = ? AND guest_id = ? AND status = 'held' AND is_custom = 1
+					 WHERE order_id = ? AND guest_id = ? AND status = ? AND is_custom = 1
 					   AND title = ? AND price_cents = ?`
 				)
-				.get(opts.orderId, opts.guestId, opts.title, opts.priceCents) as
+				.get(opts.orderId, opts.guestId, status, opts.title, opts.priceCents) as
 				| { id: number; quantity: number }
 				| undefined)
 		: (db
 				.prepare(
 					`SELECT id, quantity FROM order_items
-					 WHERE order_id = ? AND guest_id = ? AND status = 'held' AND menu_item_id = ?`
+					 WHERE order_id = ? AND guest_id = ? AND status = ? AND menu_item_id = ?`
 				)
-				.get(opts.orderId, opts.guestId, opts.menuItemId) as
+				.get(opts.orderId, opts.guestId, status, opts.menuItemId) as
 				| { id: number; quantity: number }
 				| undefined);
 
@@ -161,8 +170,8 @@ export function mergeOrInsertHeld(opts: {
 	}
 
 	db.prepare(
-		`INSERT INTO order_items (order_id, guest_id, menu_item_id, title, price_cents, quantity, status, is_custom)
-		 VALUES (@orderId, @guestId, @menuItemId, @title, @priceCents, @quantity, 'held', @isCustom)`
+		`INSERT INTO order_items (order_id, guest_id, menu_item_id, title, price_cents, quantity, status, is_custom, sent_at, ready_at)
+		 VALUES (@orderId, @guestId, @menuItemId, @title, @priceCents, @quantity, @status, @isCustom, @sentAt, @readyAt)`
 	).run({
 		orderId: opts.orderId,
 		guestId: opts.guestId,
@@ -170,6 +179,9 @@ export function mergeOrInsertHeld(opts: {
 		title: opts.title,
 		priceCents: opts.priceCents,
 		quantity: opts.quantity,
-		isCustom: opts.isCustom ? 1 : 0
+		status,
+		isCustom: opts.isCustom ? 1 : 0,
+		sentAt: opts.sentAt ?? null,
+		readyAt: opts.readyAt ?? null
 	});
 }

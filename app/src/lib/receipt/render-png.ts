@@ -1,4 +1,5 @@
 import { formatMoney } from '$lib/money';
+import { formatDbDateTime } from '$lib/time';
 import { RECEIPT_WIDTH_PX, type ReceiptData } from './types';
 
 const PAD = 16;
@@ -8,26 +9,8 @@ const QR_SIZE = 160;
 type Font = { size: number; weight?: string; family?: string };
 
 function formatWhen(createdAt: string | null): string {
-	if (createdAt) {
-		const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(createdAt);
-		if (m) {
-			const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
-			return d.toLocaleString('ru-RU', {
-				day: '2-digit',
-				month: '2-digit',
-				year: 'numeric',
-				hour: '2-digit',
-				minute: '2-digit'
-			});
-		}
-	}
-	return new Date().toLocaleString('ru-RU', {
-		day: '2-digit',
-		month: '2-digit',
-		year: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit'
-	});
+	if (createdAt) return formatDbDateTime(createdAt);
+	return formatDbDateTime(new Date().toISOString().slice(0, 19).replace('T', ' '));
 }
 
 function titleLine(data: ReceiptData): string {

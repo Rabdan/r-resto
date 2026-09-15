@@ -2,11 +2,13 @@
 	import '../app.css';
 	import { page } from '$app/state';
 	import { setCurrency } from '$lib/money';
+	import { setTimezone } from '$lib/timezone';
 
 	let { children, data } = $props();
 
 	$effect(() => {
 		if (data.currency) setCurrency(data.currency);
+		if (data.timezone) setTimezone(data.timezone);
 	});
 
 	$effect(() => {

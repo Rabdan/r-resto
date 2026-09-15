@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatMoney, parseMoney } from '$lib/money';
+	import { formatDbDateTime, localInputToDbTime, nowLocalInput } from '$lib/time';
 
 	type ShiftExpense = {
 		id: number;
@@ -27,6 +28,8 @@
 		waiter_name: string;
 		hall_name: string;
 		total_cents: number;
+		shortfall_cents: number;
+		writeoff_cents: number;
 	};
 	type CancelledOrder = {
 		id: number;
@@ -48,6 +51,7 @@
 			total_cents: number;
 			cash_cents: number;
 			cashless_cents: number;
+			writeoff_cents: number;
 			orders_count: number;
 			by_halls: Array<{ name: string; cents: number }>;
 			by_waiters: Array<{ name: string; cents: number }>;
@@ -56,6 +60,7 @@
 		orders_count: number;
 		cash_cents: number;
 		cashless_cents: number;
+		writeoff_cents: number;
 		revenue_cents: number;
 		expenses_cents: number;
 		net_cents: number;
@@ -93,8 +98,17 @@
 	let expComment = $state('');
 	let expSubmitting = $state(false);
 
+	const writeoffPresets = ['Отказ гостя', 'Ошибка ввода', 'Скидка', 'Другое'];
+	let writeoffTarget = $state<ClosedCheck | null>(null);
+	let writeoffPreset = $state(writeoffPresets[0]);
+	let writeoffCustom = $state('');
+	let writeoffSubmitting = $state(false);
+
 	const openShift = $derived(shifts.find((s) => s.status === 'open') ?? null);
 	const closedShifts = $derived(shifts.filter((s) => s.status === 'closed'));
+	const pendingShortfall = $derived(
+		(openShift?.closed_checks ?? []).reduce((sum, c) => sum + c.shortfall_cents, 0)
+	);
 
 	onMount(() => {
 		expTime = nowLocalInput();
@@ -153,6 +167,36 @@
 	function reasonText(): string {
 		if (preset === 'Другое') return customReason.trim();
 		return preset;
+	}
+
+	function writeoffReasonText(): string {
+		if (writeoffPreset === 'Другое') return writeoffCustom.trim();
+		return writeoffPreset;
+	}
+
+	async function confirmWriteoff() {
+		if (!writeoffTarget) return;
+		const reason = writeoffReasonText();
+		if (reason.length < 2) {
+			error = 'Укажи причину списания';
+			return;
+		}
+		writeoffSubmitting = true;
+		const res = await fetch(`/api/admin/orders/${writeoffTarget.id}/writeoff`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ reason })
+		});
+		writeoffSubmitting = false;
+		if (!res.ok) {
+			error = 'Не удалось списать недоплату';
+			return;
+		}
+		writeoffTarget = null;
+		writeoffCustom = '';
+		writeoffPreset = writeoffPresets[0];
+		message = 'Недоплата списана';
+		await load();
 	}
 
 	async function confirmCancel() {
@@ -230,22 +274,11 @@
 	}
 
 	function datetimeLabel(dbTime: string | null | undefined): string {
-		if (!dbTime) return '—';
-		const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(dbTime);
-		if (!m) return dbTime;
-		return `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}`;
-	}
-
-	function nowLocalInput(): string {
-		const d = new Date();
-		const pad = (n: number) => String(n).padStart(2, '0');
-		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+		return formatDbDateTime(dbTime);
 	}
 
 	function inputToSqlite(value: string): string | null {
-		const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(value);
-		if (!m) return null;
-		return `${m[1]} ${m[2]}:00`;
+		return localInputToDbTime(value);
 	}
 
 	function methodLabel(method: 'cash' | 'cashless'): string {
@@ -291,6 +324,13 @@
 				<p class="font-semibold">{formatMoney(openShift.revenue_cents)}</p>
 			</div>
 		</div>
+
+		{#if pendingShortfall > 0}
+			<div class="rounded-md border border-amber-300 bg-amber-50 p-3">
+				<p class="text-xs font-semibold uppercase text-amber-700">Недоплаты к списанию</p>
+				<p class="text-sm font-semibold">{formatMoney(pendingShortfall)}</p>
+			</div>
+		{/if}
 
 		<section class="space-y-3">
 			<h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Чеки за смену</h2>
@@ -355,6 +395,25 @@
 							</div>
 							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
 							<p class="text-xs text-slate-500">Закрыт: {datetimeLabel(order.closed_at)}</p>
+							{#if order.shortfall_cents > 0}
+								<p class="mt-1 text-sm font-semibold text-amber-600">
+									Недоплата: {formatMoney(order.shortfall_cents)}
+								</p>
+								<button
+									type="button"
+									onclick={() => {
+										writeoffTarget = order;
+										error = null;
+									}}
+									class="mt-2 h-10 w-full rounded-md bg-amber-600 text-sm font-semibold text-white"
+								>
+									Списать недоплату
+								</button>
+							{:else if order.writeoff_cents > 0}
+								<p class="mt-1 text-sm text-slate-500">
+									Списано: {formatMoney(order.writeoff_cents)}
+								</p>
+							{/if}
 						</li>
 					{:else}
 						<li class="text-slate-500">Нет закрытых чеков</li>
@@ -394,7 +453,11 @@
 								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
 							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
-							<p class="text-xs text-slate-500">закрыт</p>
+							{#if order.shortfall_cents > 0}
+								<p class="text-xs font-semibold text-amber-600">недоплата {formatMoney(order.shortfall_cents)}</p>
+							{:else}
+								<p class="text-xs text-slate-500">закрыт</p>
+							{/if}
 						</li>
 					{/each}
 					{#each openShift.cancelled as order}
@@ -582,7 +645,7 @@
 
 				{#if expanded === shift.id}
 					<div class="space-y-3 border-t border-slate-200 p-4">
-						<div class="grid grid-cols-2 gap-2 text-sm">
+						<div class="grid grid-cols-3 gap-2 text-sm">
 							<div class="rounded bg-slate-100 p-3">
 								<p class="text-slate-500">Касса</p>
 								<p class="font-semibold">{formatMoney(shift.cash_cents)}</p>
@@ -590,6 +653,10 @@
 							<div class="rounded bg-slate-100 p-3">
 								<p class="text-slate-500">Банк</p>
 								<p class="font-semibold">{formatMoney(shift.cashless_cents)}</p>
+							</div>
+							<div class="rounded bg-slate-100 p-3">
+								<p class="text-slate-500">Списания</p>
+								<p class="font-semibold">{formatMoney(shift.writeoff_cents)}</p>
 							</div>
 						</div>
 
@@ -695,6 +762,56 @@
 					class="h-10 rounded-md bg-rose-700 text-sm text-white font-semibold disabled:opacity-50"
 				>
 					Подтвердить отмену
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if writeoffTarget}
+	<div class="fixed inset-0 z-40 flex items-end justify-center bg-black/60 p-4 sm:items-center">
+		<div class="w-full max-w-md rounded-md border border-slate-300 bg-slate-100 p-4">
+			<p class="font-semibold">Списание недоплаты</p>
+			<p class="mt-1 text-sm text-slate-700">
+				Чек №{writeoffTarget.id} ({writeoffTarget.waiter_name}) — недоплата{' '}
+				{formatMoney(writeoffTarget.shortfall_cents)}
+			</p>
+			<p class="mt-3 text-sm text-slate-500">Причина (обязательно)</p>
+			<div class="mt-2 flex flex-wrap gap-2">
+				{#each writeoffPresets as option}
+					<button
+						type="button"
+						onclick={() => (writeoffPreset = option)}
+						class="h-11 rounded-md px-3 text-sm {writeoffPreset === option
+							? 'bg-amber-600 text-white'
+							: 'bg-white'}"
+					>
+						{option}
+					</button>
+				{/each}
+			</div>
+			{#if writeoffPreset === 'Другое'}
+				<textarea
+					bind:value={writeoffCustom}
+					class="mt-3 min-h-20 w-full rounded-md bg-white p-3 text-sm"
+					placeholder="Опиши причину"
+				></textarea>
+			{/if}
+			<div class="mt-4 grid grid-cols-2 gap-2">
+				<button
+					type="button"
+					onclick={() => (writeoffTarget = null)}
+					class="h-10 rounded-md bg-white text-sm"
+				>
+					Отмена
+				</button>
+				<button
+					type="button"
+					onclick={() => void confirmWriteoff()}
+					disabled={writeoffSubmitting}
+					class="h-10 rounded-md bg-amber-700 text-sm font-semibold text-white disabled:opacity-50"
+				>
+					Списать
 				</button>
 			</div>
 		</div>

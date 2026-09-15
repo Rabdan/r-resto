@@ -132,7 +132,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			quantity?: number;
 		}>;
 		fired?: boolean;
-		pay?: { guestIndex?: number; method?: 'cash' | 'cashless'; cashReceivedCents?: number };
+		pay?: { guestIndex?: number; cashlessCents?: number; cashReceivedCents?: number };
 	};
 
 	const hall =
@@ -197,28 +197,32 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		}
 	}
 
-	let payMethod: 'cash' | 'cashless' | null = null;
+	let payMethod: 'cash' | 'cashless' | 'mixed' | null = null;
 	let payGuestIndex = 0;
-	let payAmount = 0;
+	let payCashCents = 0;
+	let payCashlessCents = 0;
+	let payShortfallCents = 0;
 	let cashReceived: number | null = null;
 	let changeCents = 0;
 	if (body.pay) {
 		payGuestIndex = Math.max(0, Math.floor(Number(body.pay.guestIndex) || 0));
-		if (body.pay.method !== 'cash' && body.pay.method !== 'cashless') {
-			return json({ error: 'invalid_method' }, { status: 400 });
-		}
-		payMethod = body.pay.method;
-		payAmount = resolvedItems
+		const payAmount = resolvedItems
 			.filter((i) => i.guestIndex === payGuestIndex)
 			.reduce((sum, i) => sum + i.quantity * i.priceCents, 0);
 		if (payAmount <= 0) return json({ error: 'empty_guest' }, { status: 409 });
-		if (payMethod === 'cash') {
-			cashReceived = Math.round(Number(body.pay.cashReceivedCents));
-			if (!Number.isFinite(cashReceived) || cashReceived < payAmount) {
-				return json({ error: 'cash_too_low' }, { status: 400 });
-			}
-			changeCents = cashReceived - payAmount;
-		}
+
+		const card = Math.min(Math.max(Math.round(Number(body.pay.cashlessCents ?? 0)) || 0, 0), payAmount);
+		const remaining = payAmount - card;
+		cashReceived = Math.round(Number(body.pay.cashReceivedCents ?? 0)) || 0;
+		const cash = Math.min(Math.max(cashReceived, 0), remaining);
+		const collected = card + cash;
+		if (collected <= 0) return json({ error: 'nothing_collected' }, { status: 400 });
+
+		payCashlessCents = card;
+		payCashCents = cash;
+		payShortfallCents = payAmount - collected;
+		changeCents = cashReceived - cash;
+		payMethod = card > 0 && cash > 0 ? 'mixed' : card > 0 ? 'cashless' : 'cash';
 	}
 
 	const result = db.transaction(() => {
@@ -271,9 +275,21 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			const payGuestId = guestIds[Math.min(payGuestIndex, guestIds.length - 1)];
 			db.prepare(
 				`UPDATE order_guests
-				 SET is_paid = 1, payment_method = ?, amount_cents = ?, cash_received_cents = ?, change_cents = ?, paid_at = datetime('now')
+				 SET is_paid = 1, payment_method = ?, amount_cents = ?,
+				     cash_cents = ?, cashless_cents = ?,
+				     cash_received_cents = ?, change_cents = ?,
+				     shortfall_cents = ?, paid_at = datetime('now')
 				 WHERE id = ?`
-			)			.run(payMethod, payAmount, cashReceived, payMethod === 'cash' ? changeCents : 0, payGuestId);
+			).run(
+				payMethod,
+				payCashCents + payCashlessCents,
+				payCashCents,
+				payCashlessCents,
+				cashReceived,
+				changeCents,
+				payShortfallCents,
+				payGuestId
+			);
 
 			settleEmptyUnpaidGuests(id);
 

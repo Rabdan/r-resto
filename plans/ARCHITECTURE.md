@@ -80,7 +80,7 @@ erDiagram
 | `menu_categories`, `menu_items` | Справочник; `is_available` = стоп-лист; `image_path` |
 | `shifts` | Кассовая смена точки |
 | `orders` | Заказ: `open` / `closed` / `cancelled` |
-| `order_guests` | Гости сплита, оплата каждого |
+| `order_guests` | Гости сплита, оплата каждого: `cash_cents` / `cashless_cents` / `shortfall_cents` / `writeoff_cents` |
 | `order_items` | Позиции: цена зафиксирована; статус кухни |
 | `expenses` | Расходы смены: `shift_id`, `payment_method` (`cash` / `cashless`), сумма, примечание |
 
@@ -99,7 +99,7 @@ erDiagram
 
 ### Закрытие заказа
 
-`orders.status = closed` только когда **все** `order_guests.is_paid = 1`. Частичная оплата оставляет заказ в активных. Отмена — только админ, с обязательной причиной; SSE `ORDER_CANCELLED` снимает карточку с KDS.
+`orders.status = closed` только когда **все** `order_guests.is_paid = 1`. Оплата гостя — комбинированная: в `order_guests` пишутся суммы по способам (`cash_cents`, `cashless_cents`) и, если внесено меньше суммы гостя, `shortfall_cents` (недоплата). Заказ закрывается и с недоплатой. Недоплата блокирует закрытие смены: админ списывает её (`shortfall_cents` → `writeoff_cents`, причина обязательна). Отмена — только админ, с обязательной причиной; SSE `ORDER_CANCELLED` снимает карточку с KDS.
 
 ## 4. SSE-события
 
@@ -131,7 +131,8 @@ erDiagram
 - `GET /api/kds` — очередь кухни (открытые заказы с pending/ready, новые сверху, позиции без цен)
 - `PATCH /api/kds/items/:id` — `{ status: 'ready' | 'pending' }`
 - `GET|POST /api/menu`, upload картинки
-- `GET|POST /api/shifts`, close + Z (открытие смены — сессия админа; закрытие — только без открытых заказов)
+- `GET|POST /api/shifts`, close + Z (открытие смены — сессия админа; закрытие — без открытых заказов и недоплат)
+- `POST /api/admin/orders/:id/writeoff` — списание недоплаты заказа, `{ reason }`
 - `GET /api/admin/shifts` — текущая и закрытые смены с чеками, выручкой и расходами
 - `GET /api/admin/orders` — заказы и чеки открытой смены
 - `POST /api/admin/orders/:id/cancel` — `{ reason }` обязательно

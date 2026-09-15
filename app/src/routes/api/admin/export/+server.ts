@@ -5,6 +5,8 @@ import { requireAdmin } from '$lib/server/admin';
 import { isIsoDate } from '$lib/period';
 import { CURRENCIES, DEFAULT_CURRENCY } from '$lib/currency';
 import { compareProducts, expensesInRange, ordersInRange, paymentSummary, productSales, salesByHalls, salesByWaiters, shiftsInRange } from '$lib/server/reports';
+import { timezoneOf } from '$lib/server/timezone';
+import { formatDbDateTime } from '$lib/time';
 import type { RequestHandler } from './$types';
 
 const headerFill: ExcelJS.Fill = {
@@ -41,23 +43,26 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		return json({ error: 'invalid_range' }, { status: 400 });
 	}
 
+	const timezone = timezoneOf(locationId);
+	const fmtTime = (s: string | null | undefined): string => (s ? formatDbDateTime(s, timezone) : '');
+
 	let previous: { from: string; to: string };
 	let products: ReturnType<typeof compareProducts>['products'];
 	try {
-		const compared = compareProducts(db, locationId, from, to);
+		const compared = compareProducts(db, locationId, from, to, timezone);
 		previous = compared.previous;
 		products = compared.products;
 	} catch {
 		return json({ error: 'invalid_range' }, { status: 400 });
 	}
 
-	const orders = ordersInRange(db, locationId, from, to);
-	const sales = productSales(db, locationId, from, to);
-	const expenses = expensesInRange(db, locationId, from, to);
-	const summary = paymentSummary(db, locationId, from, to);
-	const byHalls = salesByHalls(db, locationId, from, to);
-	const byWaiters = salesByWaiters(db, locationId, from, to);
-	const shifts = shiftsInRange(db, locationId, from, to);
+	const orders = ordersInRange(db, locationId, from, to, timezone);
+	const sales = productSales(db, locationId, from, to, timezone);
+	const expenses = expensesInRange(db, locationId, from, to, timezone);
+	const summary = paymentSummary(db, locationId, from, to, timezone);
+	const byHalls = salesByHalls(db, locationId, from, to, timezone);
+	const byWaiters = salesByWaiters(db, locationId, from, to, timezone);
+	const shifts = shiftsInRange(db, locationId, from, to, timezone);
 
 	const workbook = new ExcelJS.Workbook();
 	workbook.creator = 'R-resto';
@@ -74,9 +79,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	for (const row of orders) {
 		checks.addRow({
 			id: row.id,
-			created_at: row.created_at,
+			created_at: fmtTime(row.created_at),
 			waiter_name: row.waiter_name,
-			payment_method: row.payment_method === 'cash' ? 'Наличные' : row.payment_method === 'cashless' ? 'Безнал' : '—',
+			payment_method: row.payment_method === 'cash' ? 'Наличные' : row.payment_method === 'cashless' ? 'Безнал' : row.payment_method === 'mixed' ? 'Нал + Безнал' : '—',
 			status: row.status === 'closed' ? 'Закрыт' : 'Отменён',
 			total: money(row.total_cents)
 		});
@@ -134,7 +139,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	];
 	for (const row of expenses) {
 		exp.addRow({
-			created_at: row.created_at,
+			created_at: fmtTime(row.created_at),
 			payment_method: row.payment_method === 'cash' ? 'Наличные' : 'Банк',
 			amount: money(row.amount_cents),
 			author: row.author,
@@ -152,6 +157,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	sumSheet.addRow({ label: 'Чеков закрыто', value: summary.orders_count });
 	sumSheet.addRow({ label: 'Наличные', value: money(summary.cash_cents) });
 	sumSheet.addRow({ label: 'Безналичные', value: money(summary.cashless_cents) });
+	sumSheet.addRow({ label: 'Списания (недоплата)', value: money(summary.writeoff_cents) });
 	const sumTotal = sumSheet.addRow({ label: 'Итого', value: money(summary.total_cents) });
 	sumTotal.font = { bold: true };
 	sumSheet.getColumn('value').numFmt = numFmt;
@@ -192,21 +198,24 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		{ header: 'Чеков', key: 'orders', width: 12 },
 		{ header: 'Наличные', key: 'cash', width: 14 },
 		{ header: 'Безнал', key: 'cashless', width: 14 },
+		{ header: 'Списания', key: 'writeoff', width: 14 },
 		{ header: sumLabel, key: 'total', width: 16 }
 	];
 	for (const row of shifts) {
 		shiftsSheet.addRow({
 			id: row.id,
-			opened_at: row.opened_at,
-			closed_at: row.closed_at ?? '',
+			opened_at: fmtTime(row.opened_at),
+			closed_at: fmtTime(row.closed_at),
 			orders: row.orders_count,
 			cash: money(row.cash_cents),
 			cashless: money(row.cashless_cents),
+			writeoff: money(row.writeoff_cents),
 			total: money(row.total_cents)
 		});
 	}
 	shiftsSheet.getColumn('cash').numFmt = numFmt;
 	shiftsSheet.getColumn('cashless').numFmt = numFmt;
+	shiftsSheet.getColumn('writeoff').numFmt = numFmt;
 	shiftsSheet.getColumn('total').numFmt = numFmt;
 	styleHeader(shiftsSheet);
 

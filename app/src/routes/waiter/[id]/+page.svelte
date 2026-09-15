@@ -21,6 +21,10 @@
 		is_paid: number;
 		payment_method: string | null;
 		amount_cents: number;
+		cash_cents: number;
+		cashless_cents: number;
+		shortfall_cents: number;
+		writeoff_cents: number;
 	};
 	type Item = OrderLine & { menu_item_id: number | null };
 	type OrderDetail = {
@@ -73,7 +77,7 @@
 	let moveQty = $state('1');
 	let payOpen = $state(false);
 	let payGuestId = $state<number | null>(null);
-	let payMethod = $state<'cash' | 'cashless'>('cashless');
+	let cashlessIn = $state('');
 	let cashIn = $state('');
 	let payError = $state<string | null>(null);
 	let splitMode = $state(false);
@@ -215,7 +219,11 @@
 			sort_order: 0,
 			is_paid: 0,
 			payment_method: null,
-			amount_cents: 0
+			amount_cents: 0,
+			cash_cents: 0,
+			cashless_cents: 0,
+			shortfall_cents: 0,
+			writeoff_cents: 0
 		};
 		guests = [firstGuest];
 		guestId = firstGuest.id;
@@ -248,8 +256,8 @@
 
 	function orderErrorMessage(code: string | undefined, fallback = 'Ошибка заказа'): string {
 		switch (code) {
-			case 'cash_too_low':
-				return 'Недостаточно наличных';
+			case 'nothing_collected':
+				return 'Укажи сумму оплаты';
 			case 'empty_guest':
 				return 'У гостя нет позиций';
 			case 'shift_closed':
@@ -257,6 +265,10 @@
 			case 'guest_paid':
 			case 'already_paid':
 				return 'Гость уже оплачен';
+			case 'quantity_too_high':
+				return 'Нельзя перенести больше, чем есть';
+			case 'guest_not_found':
+				return 'Гость не найден';
 			case 'stop_list':
 				return 'Позиция в стоп-листе';
 			case 'last_guest':
@@ -359,7 +371,11 @@
 				sort_order: guests.length,
 				is_paid: 0,
 				payment_method: null,
-				amount_cents: 0
+				amount_cents: 0,
+				cash_cents: 0,
+				cashless_cents: 0,
+				shortfall_cents: 0,
+				writeoff_cents: 0
 			};
 			guests = [...guests, g];
 			guestId = g.id;
@@ -535,28 +551,33 @@
 				fired: false,
 				pay: {
 					guestIndex: guests.findIndex((g) => g.id === payGuestId),
-					method: payMethod,
-					cashReceivedCents: payMethod === 'cash' ? parseMoney(cashIn) : undefined
+					cashlessCents: parseMoney(cashlessIn) || 0,
+					cashReceivedCents: parseMoney(cashIn) || 0
 				}
 			});
 			if (ok) {
 				payOpen = false;
 				cashIn = '';
+				cashlessIn = '';
 			} else {
 				payError = error;
 			}
 			return;
 		}
-		const cashReceivedCents = payMethod === 'cash' ? parseMoney(cashIn) : undefined;
 		const res = await fetch(`/api/orders/${orderId}/pay`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ guestId: payGuestId, method: payMethod, cashReceivedCents })
+			body: JSON.stringify({
+				guestId: payGuestId,
+				cashlessCents: parseMoney(cashlessIn) || 0,
+				cashReceivedCents: parseMoney(cashIn) || 0
+			})
 		});
 		const ok = await applyRes(res);
 		if (ok) {
 			payOpen = false;
 			cashIn = '';
+			cashlessIn = '';
 			payError = null;
 		} else {
 			payError = error;
@@ -565,7 +586,7 @@
 
 	async function commitDraft(opts: {
 		fired: boolean;
-		pay?: { guestIndex: number; method: 'cash' | 'cashless'; cashReceivedCents?: number };
+		pay?: { guestIndex: number; cashlessCents: number; cashReceivedCents: number };
 		navigateTo?: string;
 	}): Promise<boolean> {
 		error = null;
@@ -623,7 +644,7 @@
 		if (isClosed) return;
 		const unpaid = guests.filter((g) => !g.is_paid && guestTotal(g.id) > 0);
 		payGuestId = unpaid[0]?.id ?? null;
-		payMethod = 'cashless';
+		cashlessIn = '';
 		cashIn = '';
 		payError = null;
 		payOpen = true;
@@ -732,7 +753,12 @@
 			<div class="flex h-full min-h-0 flex-col">
 				<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
 					<OrderItems
-						guests={guests.map((g) => ({ id: g.id, name: g.name, is_paid: g.is_paid }))}
+						guests={guests.map((g) => ({
+							id: g.id,
+							name: g.name,
+							is_paid: g.is_paid,
+							shortfall_cents: g.shortfall_cents
+						}))}
 						{items}
 						activeGuestId={guestId}
 						{splitMode}
@@ -867,7 +893,7 @@
 	<PayDialog
 		{guests}
 		bind:payGuestId
-		bind:payMethod
+		bind:cashlessIn
 		bind:cashIn
 		{guestTotal}
 		{hallQrPath}

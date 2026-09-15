@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { CURRENCIES, CURRENCY_CODES } from '$lib/currency';
 	import { formatMoney, setCurrency } from '$lib/money';
+	import { TIMEZONES, timezoneOffsetLabel, setTimezone } from '$lib/timezone';
+	import { formatDbDateTime } from '$lib/time';
 	import AdminSwitch from '$lib/components/admin/AdminSwitch.svelte';
 
 	const PRESETS = [
@@ -31,6 +33,7 @@
 	};
 
 	let current = $state<string>('');
+	let currentTimezone = $state<string>('UTC');
 	let saving = $state(false);
 	let message = $state<string | null>(null);
 
@@ -49,6 +52,8 @@
 			const data = await res.json();
 			current = data.currency ?? '';
 			setCurrency(current);
+			currentTimezone = data.timezone ?? 'UTC';
+			setTimezone(currentTimezone);
 		}
 		await loadHalls();
 	});
@@ -78,6 +83,25 @@
 		current = data.currency;
 		setCurrency(current);
 		message = 'Валюта сохранена';
+	}
+
+	async function chooseTimezone(value: string) {
+		saving = true;
+		message = null;
+		const res = await fetch('/api/settings', {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ timezone: value })
+		});
+		saving = false;
+		if (!res.ok) {
+			message = 'Не удалось сохранить часовой пояс';
+			return;
+		}
+		const data = await res.json();
+		currentTimezone = data.timezone;
+		setTimezone(currentTimezone);
+		message = 'Часовой пояс сохранён';
 	}
 
 	async function addHall() {
@@ -189,6 +213,23 @@
 		{#if current}
 			<p class="mt-2 text-sm text-slate-500">Пример: {formatMoney(120000)}</p>
 		{/if}
+	</section>
+
+	<section>
+		<h2 class="text-sm uppercase tracking-wide text-slate-500">Часовой пояс</h2>
+		<select
+			bind:value={currentTimezone}
+			onchange={() => chooseTimezone(currentTimezone)}
+			disabled={saving}
+			class="mt-2 h-10 w-full rounded-md bg-white px-3 text-sm text-slate-700"
+		>
+			{#each TIMEZONES as tz}
+				<option value={tz.value}>{tz.label}{timezoneOffsetLabel(tz.value)}</option>
+			{/each}
+		</select>
+		<p class="mt-2 text-sm text-slate-500">
+			Сейчас: {formatDbDateTime(new Date().toISOString().slice(0, 19).replace('T', ' '))}
+		</p>
 	</section>
 
 	<section>

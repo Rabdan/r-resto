@@ -10,6 +10,7 @@ export type ZReport = {
 	total_cents: number;
 	cash_cents: number;
 	cashless_cents: number;
+	writeoff_cents: number;
 	orders_count: number;
 	by_halls: HallAgg[];
 	by_waiters: WaiterAgg[];
@@ -36,6 +37,8 @@ export type ClosedCheck = {
 	waiter_name: string;
 	hall_name: string;
 	total_cents: number;
+	shortfall_cents: number;
+	writeoff_cents: number;
 };
 
 export type CancelledOrder = {
@@ -59,6 +62,7 @@ export type ShiftRow = {
 	orders_count: number;
 	cash_cents: number;
 	cashless_cents: number;
+	writeoff_cents: number;
 	revenue_cents: number;
 	expenses_cents: number;
 	net_cents: number;
@@ -71,17 +75,18 @@ export type ShiftRow = {
 function shiftPayments(
 	db: Database.Database,
 	shiftId: number
-): { cash_cents: number; cashless_cents: number } {
+): { cash_cents: number; cashless_cents: number; writeoff_cents: number } {
 	return db
 		.prepare(
 			`SELECT
-				COALESCE(SUM(CASE WHEN og.payment_method = 'cash' THEN og.amount_cents ELSE 0 END), 0) AS cash_cents,
-				COALESCE(SUM(CASE WHEN og.payment_method = 'cashless' THEN og.amount_cents ELSE 0 END), 0) AS cashless_cents
+				COALESCE(SUM(og.cash_cents), 0) AS cash_cents,
+				COALESCE(SUM(og.cashless_cents), 0) AS cashless_cents,
+				COALESCE(SUM(og.writeoff_cents), 0) AS writeoff_cents
 			 FROM order_guests og
 			 JOIN orders o ON o.id = og.order_id
 			 WHERE o.shift_id = ? AND og.is_paid = 1`
 		)
-		.get(shiftId) as { cash_cents: number; cashless_cents: number };
+		.get(shiftId) as { cash_cents: number; cashless_cents: number; writeoff_cents: number };
 }
 
 function closedOrdersCount(db: Database.Database, shiftId: number): number {
@@ -99,6 +104,21 @@ function openOrdersCount(db: Database.Database, shiftId: number): number {
 		(
 			db
 				.prepare(`SELECT COUNT(*) AS n FROM orders WHERE shift_id = ? AND status = 'open'`)
+				.get(shiftId) as { n: number } | undefined
+		)?.n ?? 0
+	);
+}
+
+function shiftShortfallCents(db: Database.Database, shiftId: number): number {
+	return (
+		(
+			db
+				.prepare(
+					`SELECT COALESCE(SUM(og.shortfall_cents), 0) AS n
+					 FROM order_guests og
+					 JOIN orders o ON o.id = og.order_id
+					 WHERE o.shift_id = ?`
+				)
 				.get(shiftId) as { n: number } | undefined
 		)?.n ?? 0
 	);
@@ -156,7 +176,9 @@ export function loadOrdersForShift(
 			`SELECT o.id, o.created_at, o.closed_at, u.name AS waiter_name, h.name AS hall_name,
 			        COALESCE((
 			          SELECT SUM(oi.quantity * oi.price_cents) FROM order_items oi WHERE oi.order_id = o.id
-			        ), 0) AS total_cents
+			        ), 0) AS total_cents,
+			        COALESCE((SELECT SUM(og.shortfall_cents) FROM order_guests og WHERE og.order_id = o.id), 0) AS shortfall_cents,
+			        COALESCE((SELECT SUM(og.writeoff_cents) FROM order_guests og WHERE og.order_id = o.id), 0) AS writeoff_cents
 			 FROM orders o
 			 JOIN users u ON u.id = o.waiter_id
 			 JOIN halls h ON h.id = o.hall_id
@@ -200,9 +222,10 @@ function buildZReport(
 		.all(shiftId) as WaiterAgg[];
 
 	return {
-		total_cents: payments.cash_cents + payments.cashless_cents,
+		total_cents: payments.cash_cents + payments.cashless_cents + payments.writeoff_cents,
 		cash_cents: payments.cash_cents,
 		cashless_cents: payments.cashless_cents,
+		writeoff_cents: payments.writeoff_cents,
 		orders_count: ordersCount,
 		by_halls: byHalls,
 		by_waiters: byWaiters
@@ -226,7 +249,7 @@ export function listShifts(db: Database.Database, locationId: number): ShiftRow[
 	>;
 
 	const zStmt = db.prepare(
-		`SELECT id, shift_id, total_cents, cash_cents, cashless_cents, orders_count, by_halls_json, by_waiters_json, created_at
+		`SELECT id, shift_id, total_cents, cash_cents, cashless_cents, writeoff_cents, orders_count, by_halls_json, by_waiters_json, created_at
 		 FROM z_reports WHERE shift_id = ?`
 	);
 
@@ -238,6 +261,7 @@ export function listShifts(db: Database.Database, locationId: number): ShiftRow[
 					total_cents: number;
 					cash_cents: number;
 					cashless_cents: number;
+					writeoff_cents: number;
 					orders_count: number;
 					by_halls_json: string | null;
 					by_waiters_json: string | null;
@@ -251,15 +275,16 @@ export function listShifts(db: Database.Database, locationId: number): ShiftRow[
 					total_cents: zr.total_cents,
 					cash_cents: zr.cash_cents,
 					cashless_cents: zr.cashless_cents,
+					writeoff_cents: zr.writeoff_cents,
 					orders_count: zr.orders_count,
 					by_halls: JSON.parse(zr.by_halls_json ?? '[]'),
 					by_waiters: JSON.parse(zr.by_waiters_json ?? '[]'),
 					created_at: zr.created_at
-				}
+			  }
 			: null;
 
 		const payments = shiftPayments(db, s.id);
-		const revenue_cents = payments.cash_cents + payments.cashless_cents;
+		const revenue_cents = payments.cash_cents + payments.cashless_cents + payments.writeoff_cents;
 		const expenses = listExpensesForShift(db, s.id);
 		const expenses_cents = expensesTotalForShift(db, s.id);
 		const shiftOrders =
@@ -278,6 +303,7 @@ export function listShifts(db: Database.Database, locationId: number): ShiftRow[
 			orders_count: closedOrdersCount(db, s.id),
 			cash_cents: payments.cash_cents,
 			cashless_cents: payments.cashless_cents,
+			writeoff_cents: payments.writeoff_cents,
 			revenue_cents,
 			expenses_cents,
 			net_cents: revenue_cents - expenses_cents,
@@ -304,6 +330,7 @@ export function closeOpenShift(
 	if (!shift) return { error: 'no_open_shift' };
 
 	if (openOrdersCount(db, shift.id) > 0) return { error: 'open_orders' };
+	if (shiftShortfallCents(db, shift.id) > 0) return { error: 'open_shortfalls' };
 
 	const z = buildZReport(db, shift.id);
 	const zId = db.transaction(() => {
@@ -313,8 +340,8 @@ export function closeOpenShift(
 		const info = db
 			.prepare(
 				`INSERT INTO z_reports
-				 (shift_id, location_id, total_cents, cash_cents, cashless_cents, orders_count, by_halls_json, by_waiters_json, closed_by_user_id)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+				 (shift_id, location_id, total_cents, cash_cents, cashless_cents, writeoff_cents, orders_count, by_halls_json, by_waiters_json, closed_by_user_id)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 			)
 			.run(
 				shift.id,
@@ -322,6 +349,7 @@ export function closeOpenShift(
 				z.total_cents,
 				z.cash_cents,
 				z.cashless_cents,
+				z.writeoff_cents,
 				z.orders_count,
 				JSON.stringify(z.by_halls),
 				JSON.stringify(z.by_waiters),

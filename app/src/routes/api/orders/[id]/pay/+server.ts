@@ -21,20 +21,17 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 
 	const body = (await request.json().catch(() => ({}))) as {
 		guestId?: number;
-		method?: 'cash' | 'cashless';
+		cashlessCents?: number;
 		cashReceivedCents?: number;
 	};
 	const guestId = Number(body.guestId);
-	const method = body.method;
-	if (method !== 'cash' && method !== 'cashless') {
-		return json({ error: 'invalid_method' }, { status: 400 });
-	}
+	const cashless = Math.round(Number(body.cashlessCents ?? 0)) || 0;
+	const cashReceived = Math.round(Number(body.cashReceivedCents ?? 0)) || 0;
 
-	let cashReceived: number | null = null;
 	let change = 0;
 	let alreadyPaid = false;
 	let emptyGuest = false;
-	let cashTooLow = false;
+	let nothingCollected = false;
 
 	db.transaction(() => {
 		const guest = db
@@ -46,32 +43,33 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 			return;
 		}
 
-		const amount = guestItemsTotal(orderId, guestId);
-		if (amount <= 0) {
+		const total = guestItemsTotal(orderId, guestId);
+		if (total <= 0) {
 			emptyGuest = true;
 			return;
 		}
 
-		if (method === 'cash') {
-			cashReceived = Math.round(Number(body.cashReceivedCents));
-			if (!Number.isFinite(cashReceived) || cashReceived < amount) {
-				cashTooLow = true;
-				return;
-			}
-			change = cashReceived - amount;
-		}
-
-		const paid = db
-			.prepare(
-				`UPDATE order_guests
-				 SET is_paid = 1, payment_method = ?, amount_cents = ?, cash_received_cents = ?, change_cents = ?, paid_at = datetime('now')
-				 WHERE id = ? AND is_paid = 0`
-			)
-			.run(method, amount, cashReceived, method === 'cash' ? change : 0, guestId);
-		if (paid.changes === 0) {
-			alreadyPaid = true;
+		const card = Math.min(Math.max(cashless, 0), total);
+		const remaining = total - card;
+		const cash = Math.min(Math.max(cashReceived, 0), remaining);
+		const collected = card + cash;
+		if (collected <= 0) {
+			nothingCollected = true;
 			return;
 		}
+
+		change = cashReceived - cash;
+		const shortfall = total - collected;
+		const method = card > 0 && cash > 0 ? 'mixed' : card > 0 ? 'cashless' : 'cash';
+
+		db.prepare(
+			`UPDATE order_guests
+			 SET is_paid = 1, payment_method = ?, amount_cents = ?,
+			     cash_cents = ?, cashless_cents = ?,
+			     cash_received_cents = ?, change_cents = ?,
+			     shortfall_cents = ?, paid_at = datetime('now')
+			 WHERE id = ? AND is_paid = 0`
+		).run(method, collected, cash, card, cashReceived, change, shortfall, guestId);
 
 		settleEmptyUnpaidGuests(orderId);
 
@@ -89,7 +87,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 
 	if (alreadyPaid) return json({ error: 'already_paid' }, { status: 409 });
 	if (emptyGuest) return json({ error: 'empty_guest' }, { status: 409 });
-	if (cashTooLow) return json({ error: 'cash_too_low' }, { status: 400 });
+	if (nothingCollected) return json({ error: 'nothing_collected' }, { status: 400 });
 
 	const guestExists = db
 		.prepare(`SELECT id FROM order_guests WHERE id = ? AND order_id = ?`)

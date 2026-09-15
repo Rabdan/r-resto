@@ -30,7 +30,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 
 	const item = db
 		.prepare(
-			`SELECT id, guest_id, menu_item_id, title, price_cents, quantity, status, is_custom
+			`SELECT id, guest_id, menu_item_id, title, price_cents, quantity, status, is_custom, sent_at, ready_at
 			 FROM order_items WHERE id = ? AND order_id = ?`
 		)
 		.get(itemId, orderId) as
@@ -43,6 +43,8 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 				quantity: number;
 				status: string;
 				is_custom: number;
+				sent_at: string | null;
+				ready_at: string | null;
 		  }
 		| undefined;
 	if (!item) return json({ error: 'not_found' }, { status: 404 });
@@ -60,9 +62,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		else return json({ error: 'quantity_required' }, { status: 400 });
 	}
 	if (moveQty > item.quantity) return json({ error: 'quantity_too_high' }, { status: 400 });
-	if (item.status !== 'held' && moveQty !== item.quantity) {
-		return json({ error: 'cannot_split_sent' }, { status: 409 });
-	}
 
 	db.transaction(() => {
 		if (moveQty === item.quantity) {
@@ -76,7 +75,10 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 				title: item.title,
 				priceCents: item.price_cents,
 				quantity: moveQty,
-				isCustom: item.is_custom === 1
+				isCustom: item.is_custom === 1,
+				status: item.status,
+				sentAt: item.sent_at,
+				readyAt: item.ready_at
 			});
 		}
 		refreshOrderTotal(orderId);

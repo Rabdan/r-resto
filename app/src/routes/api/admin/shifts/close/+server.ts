@@ -16,6 +16,9 @@ export const POST: RequestHandler = async ({ locals }) => {
 		if (result.error === 'open_orders') {
 			return json({ error: 'Сначала закрой или отмени незакрытые заказы' }, { status: 409 });
 		}
+		if (result.error === 'open_shortfalls') {
+			return json({ error: 'Сначала спиши недоплаты по заказам' }, { status: 409 });
+		}
 		return json({ error: 'Смена не открыта' }, { status: 409 });
 	}
 

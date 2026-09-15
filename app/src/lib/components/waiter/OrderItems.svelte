@@ -12,7 +12,7 @@
 		is_custom: number;
 		ready_at?: string | null;
 	};
-	export type OrderGuestChip = { id: number; name: string; is_paid?: number };
+	export type OrderGuestChip = { id: number; name: string; is_paid?: number; shortfall_cents: number };
 
 	let {
 		guests,
@@ -210,6 +210,8 @@
 				<p class="min-w-0 flex-1 text-left text-lg font-bold text-emerald-700">
 					Гость: {guest.name}{#if guest.is_paid}<span class="ml-2 text-sm font-semibold text-slate-500"
 							>оплачен</span
+						>{/if}{#if guest.shortfall_cents > 0}<span
+							class="ml-2 text-sm font-semibold text-amber-600">недоплата {formatMoney(guest.shortfall_cents)}</span
 						>{/if}
 				</p>
 			{:else}
@@ -223,6 +225,8 @@
 					onclick={() => onGuestTap(guest)}
 				>
 					Гость: {guest.name}{#if guest.is_paid}<span class="ml-2 text-sm font-semibold">оплачен</span
+						>{/if}{#if guest.shortfall_cents > 0}<span
+							class="ml-2 text-sm font-semibold text-amber-600">недоплата {formatMoney(guest.shortfall_cents)}</span
 						>{/if}{#if !guest.is_paid && activeGuestId === guest.id}<span
 							class="ml-2 text-xs font-semibold uppercase tracking-wide text-emerald-600">активен</span
 						>{/if}
