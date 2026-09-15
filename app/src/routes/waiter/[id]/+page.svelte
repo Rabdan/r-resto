@@ -77,8 +77,6 @@
 	let moveQty = $state('1');
 	let payOpen = $state(false);
 	let payGuestId = $state<number | null>(null);
-	let cashlessIn = $state('');
-	let cashIn = $state('');
 	let payError = $state<string | null>(null);
 	let splitMode = $state(false);
 	let shiftOpen = $state(true);
@@ -543,7 +541,7 @@
 		await applyRes(await fetch(`/api/orders/${orderId}/fire`, { method: 'POST' }));
 	}
 
-	async function pay() {
+	async function pay(p: { cashlessCents: number; cashReceivedCents: number }) {
 		if (!payGuestId || isClosed) return;
 		payError = null;
 		if (isDraft) {
@@ -551,14 +549,12 @@
 				fired: false,
 				pay: {
 					guestIndex: guests.findIndex((g) => g.id === payGuestId),
-					cashlessCents: parseMoney(cashlessIn) || 0,
-					cashReceivedCents: parseMoney(cashIn) || 0
+					cashlessCents: p.cashlessCents,
+					cashReceivedCents: p.cashReceivedCents
 				}
 			});
 			if (ok) {
 				payOpen = false;
-				cashIn = '';
-				cashlessIn = '';
 			} else {
 				payError = error;
 			}
@@ -569,15 +565,13 @@
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
 				guestId: payGuestId,
-				cashlessCents: parseMoney(cashlessIn) || 0,
-				cashReceivedCents: parseMoney(cashIn) || 0
+				cashlessCents: p.cashlessCents,
+				cashReceivedCents: p.cashReceivedCents
 			})
 		});
 		const ok = await applyRes(res);
 		if (ok) {
 			payOpen = false;
-			cashIn = '';
-			cashlessIn = '';
 			payError = null;
 		} else {
 			payError = error;
@@ -644,8 +638,6 @@
 		if (isClosed) return;
 		const unpaid = guests.filter((g) => !g.is_paid && guestTotal(g.id) > 0);
 		payGuestId = unpaid[0]?.id ?? null;
-		cashlessIn = '';
-		cashIn = '';
 		payError = null;
 		payOpen = true;
 	}
@@ -893,8 +885,6 @@
 	<PayDialog
 		{guests}
 		bind:payGuestId
-		bind:cashlessIn
-		bind:cashIn
 		{guestTotal}
 		{hallQrPath}
 		error={payError}
@@ -902,7 +892,7 @@
 			payOpen = false;
 			payError = null;
 		}}
-		onConfirm={() => void pay()}
+		onConfirm={(p) => void pay(p)}
 	/>
 {/if}
 

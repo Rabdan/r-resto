@@ -7,8 +7,6 @@
 	let {
 		guests,
 		payGuestId = $bindable(),
-		cashlessIn = $bindable(),
-		cashIn = $bindable(),
 		guestTotal,
 		hallQrPath,
 		error = null,
@@ -17,31 +15,60 @@
 	}: {
 		guests: PayGuest[];
 		payGuestId: number | null;
-		cashlessIn: string;
-		cashIn: string;
 		guestTotal: (id: number) => number;
 		hallQrPath: string | null;
 		error?: string | null;
 		onClose: () => void;
-		onConfirm: () => void;
+		onConfirm: (p: { cashlessCents: number; cashReceivedCents: number }) => void;
 	} = $props();
 
-	let active = $state<'cashless' | 'cash'>('cashless');
+	let mode = $state<'full' | 'partial'>('full');
+	let fullMethod = $state<'cashless' | 'cash'>('cashless');
+	let cashlessIn = $state('');
+	let cashIn = $state('');
+	let activeField = $state<'cashless' | 'cash'>('cashless');
 
 	const unpaid = $derived(guests.filter((g) => !g.is_paid));
 	const total = $derived(payGuestId != null ? guestTotal(payGuestId) : 0);
 
 	const cashlessCents = $derived(parseMoney(cashlessIn) || 0);
 	const cashCents = $derived(parseMoney(cashIn) || 0);
+
 	const card = $derived(Math.min(Math.max(cashlessCents, 0), total));
 	const remaining = $derived(total - card);
 	const cashApplied = $derived(Math.min(Math.max(cashCents, 0), remaining));
 	const collected = $derived(card + cashApplied);
 	const change = $derived(cashCents - cashApplied);
 	const shortfall = $derived(total - collected);
+	const fullCashChange = $derived(cashCents - total);
+
+	const confirmEnabled = $derived(
+		mode === 'full' ? (fullMethod === 'cashless' ? total > 0 : cashCents >= total) : collected > 0
+	);
 
 	function imageUrl(path: string | null): string {
 		return path ? `/api/uploads/${path}` : '';
+	}
+
+	function toggleMode() {
+		mode = mode === 'full' ? 'partial' : 'full';
+		cashlessIn = '';
+		cashIn = '';
+	}
+
+	function setFullMethod(next: 'cashless' | 'cash') {
+		fullMethod = next;
+		cashlessIn = '';
+		cashIn = '';
+	}
+
+	function confirm() {
+		if (mode === 'full') {
+			if (fullMethod === 'cashless') onConfirm({ cashlessCents: total, cashReceivedCents: 0 });
+			else onConfirm({ cashlessCents: 0, cashReceivedCents: cashCents });
+		} else {
+			onConfirm({ cashlessCents: cashlessCents, cashReceivedCents: cashCents });
+		}
 	}
 </script>
 
@@ -49,6 +76,7 @@
 	<div class="flex max-h-[calc(100dvh-2rem)] w-full max-w-sm flex-col overflow-hidden rounded-md border border-slate-300 bg-slate-100">
 		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
 			<p class="text-lg font-bold">Оплата</p>
+
 			{#if unpaid.length > 1}
 				<p class="mt-4 text-sm text-slate-500">Кого считаем?</p>
 				<div class="mt-3 space-y-2">
@@ -70,48 +98,87 @@
 				<p class="mt-4 text-center text-3xl font-bold text-emerald-700">{formatMoney(total)}</p>
 			{/if}
 
-			{#if hallQrPath && (active === 'cashless' || cashlessCents > 0)}
-				<img src={imageUrl(hallQrPath)} alt="QR для оплаты" class="mt-3 w-full object-contain" />
-			{/if}
-
-			<div class="mt-4 space-y-2">
-				<button
-					type="button"
-					onclick={() => (active = 'cashless')}
-					class="flex h-12 w-full items-center justify-between rounded-md border px-4 {active === 'cashless'
-						? 'border-emerald-800 bg-white'
-						: 'border-slate-300 bg-slate-50'}"
+			{#if mode === 'full'}
+				<div
+					class="mt-4 flex gap-1 rounded-lg border border-slate-500 bg-white p-1.5"
+					role="radiogroup"
+					aria-label="Способ оплаты"
 				>
-					<span class="text-sm font-semibold text-slate-600">Безнал</span>
-					<span class="font-mono text-lg">{cashlessIn || '0'} {currencySymbol()}</span>
-				</button>
-				<button
-					type="button"
-					onclick={() => (active = 'cash')}
-					class="flex h-12 w-full items-center justify-between rounded-md border px-4 {active === 'cash'
-						? 'border-emerald-800 bg-white'
-						: 'border-slate-300 bg-slate-50'}"
-				>
-					<span class="text-sm font-semibold text-slate-600">Наличными</span>
-					<span class="font-mono text-lg">{cashIn || '0'} {currencySymbol()}</span>
-				</button>
-			</div>
+					<button
+						type="button"
+						role="radio"
+						aria-checked={fullMethod === 'cashless'}
+						class="h-12 flex-1 rounded-md border text-base font-bold {fullMethod === 'cashless'
+							? 'border-emerald-800 bg-emerald-600 text-white'
+							: 'border-slate-300 bg-slate-50 text-slate-600'}"
+						onclick={() => setFullMethod('cashless')}>Безнал</button
+					>
+					<button
+						type="button"
+						role="radio"
+						aria-checked={fullMethod === 'cash'}
+						class="h-12 flex-1 rounded-md border text-base font-bold {fullMethod === 'cash'
+							? 'border-emerald-800 bg-emerald-600 text-white'
+							: 'border-slate-300 bg-slate-50 text-slate-600'}"
+						onclick={() => setFullMethod('cash')}>Наличные</button
+					>
+				</div>
 
-			<p class="mt-2 text-sm text-slate-500">
-				{active === 'cashless' ? 'Вводим безнал' : 'Вводим внесено наличными'}
-			</p>
-			<div class="mt-3">
-				{#if active === 'cashless'}
-					<PinPad bind:value={cashlessIn} maxLength={10} />
+				{#if fullMethod === 'cashless'}
+					{#if hallQrPath}
+						<img src={imageUrl(hallQrPath)} alt="QR для оплаты" class="mt-3 w-full object-contain" />
+					{/if}
 				{:else}
-					<PinPad bind:value={cashIn} maxLength={10} />
+					<p class="mt-4 text-sm text-slate-500">Внесено, {currencySymbol()}</p>
+					<p class="font-mono text-2xl">{cashIn || '0'}</p>
+					<div class="mt-3">
+						<PinPad bind:value={cashIn} maxLength={10} />
+					</div>
+					{#if fullCashChange > 0}
+						<p class="mt-3 text-emerald-600">Сдача: {formatMoney(fullCashChange)}</p>
+					{/if}
 				{/if}
-			</div>
+			{:else}
+				<div class="mt-4 space-y-2">
+					<button
+						type="button"
+						onclick={() => (activeField = 'cashless')}
+						class="flex h-12 w-full items-center justify-between rounded-md border px-4 {activeField ===
+						'cashless'
+							? 'border-emerald-800 bg-white'
+							: 'border-slate-300 bg-slate-50'}"
+					>
+						<span class="text-sm font-semibold text-slate-600">Безнал</span>
+						<span class="font-mono text-lg">{cashlessIn || '0'} {currencySymbol()}</span>
+					</button>
+					<button
+						type="button"
+						onclick={() => (activeField = 'cash')}
+						class="flex h-12 w-full items-center justify-between rounded-md border px-4 {activeField === 'cash'
+							? 'border-emerald-800 bg-white'
+							: 'border-slate-300 bg-slate-50'}"
+					>
+						<span class="text-sm font-semibold text-slate-600">Наличными</span>
+						<span class="font-mono text-lg">{cashIn || '0'} {currencySymbol()}</span>
+					</button>
+				</div>
 
-			{#if change > 0}
-				<p class="mt-3 text-emerald-600">Сдача: {formatMoney(change)}</p>
-			{:else if shortfall > 0}
-				<p class="mt-3 font-semibold text-amber-600">Недоплата: {formatMoney(shortfall)}</p>
+				<p class="mt-2 text-sm text-slate-500">
+					{activeField === 'cashless' ? 'Вводим безнал' : 'Вводим внесено наличными'}
+				</p>
+				<div class="mt-3">
+					{#if activeField === 'cashless'}
+						<PinPad bind:value={cashlessIn} maxLength={10} />
+					{:else}
+						<PinPad bind:value={cashIn} maxLength={10} />
+					{/if}
+				</div>
+
+				{#if change > 0}
+					<p class="mt-3 text-emerald-600">Сдача: {formatMoney(change)}</p>
+				{:else if shortfall > 0}
+					<p class="mt-3 font-semibold text-amber-600">Недоплата: {formatMoney(shortfall)}</p>
+				{/if}
 			{/if}
 
 			{#if error}
@@ -119,17 +186,22 @@
 			{/if}
 		</div>
 
-		<div class="grid shrink-0 grid-cols-2 gap-2 border-t border-slate-200 p-4">
+		<div class="grid shrink-0 grid-cols-3 gap-2 border-t border-slate-200 p-4">
 			<button
 				type="button"
 				class="h-12 rounded-md border border-slate-300 bg-white text-base font-bold text-slate-800"
-				onclick={onClose}>Закрыть</button
+				onclick={onClose}>Отмена</button
+			>
+			<button
+				type="button"
+				class="h-12 rounded-md border border-slate-500 bg-white text-sm font-bold text-slate-700"
+				onclick={toggleMode}>{mode === 'full' ? 'Частично' : 'Полная'}</button
 			>
 			<button
 				type="button"
 				class="h-12 rounded-md border border-emerald-800 bg-emerald-600 text-base font-bold text-white disabled:opacity-50"
-				disabled={collected <= 0}
-				onclick={onConfirm}>Оплачено</button
+				disabled={!confirmEnabled}
+				onclick={confirm}>Оплата</button
 			>
 		</div>
 	</div>
