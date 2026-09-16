@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { broadcast } from '$lib/server/sse';
-import { loadOrder, settleEmptyUnpaidGuests } from '$lib/server/orders';
+import { loadOrder, settleEmptyUnpaidGuests, assignCheckNumber } from '$lib/server/orders';
 import { deviceHasRole } from '$lib/types';
 import type { RequestHandler } from './$types';
 
@@ -44,17 +44,18 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 		const rows = db
 			.prepare(
-				`SELECT o.id, o.number, o.created_at, o.closed_at, o.total_amount_cents, o.hall_id,
+				`SELECT o.id, o.number, o.check_number, o.created_at, o.closed_at, o.total_amount_cents, o.hall_id,
 				        u.name AS waiter_name, h.name AS hall_name
 				 FROM orders o
 				 JOIN users u ON u.id = o.waiter_id
 				 JOIN halls h ON h.id = o.hall_id
 				 WHERE o.location_id = ? AND o.status = 'closed' AND o.shift_id = ?
-				 ORDER BY o.number ASC`
+				 ORDER BY o.check_number ASC`
 			)
 			.all(locationId, shift.id) as Array<{
 			id: number;
 			number: number;
+			check_number: number;
 			created_at: string;
 			closed_at: string | null;
 			total_amount_cents: number;
@@ -313,8 +314,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				.get(id) as { n: number };
 			if (unpaid.n === 0) {
 				db.prepare(
-					`UPDATE orders SET status = 'closed', closed_at = datetime('now') WHERE id = ?`
-				).run(id);
+					`UPDATE orders SET status = 'closed', closed_at = datetime('now'), check_number = ? WHERE id = ?`
+				).run(assignCheckNumber(id), id);
 			}
 		}
 

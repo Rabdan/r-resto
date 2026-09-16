@@ -30,6 +30,7 @@
 	type OrderDetail = {
 		id: number;
 		number: number;
+		check_number: number;
 		status: string;
 		total_amount_cents: number;
 		created_at?: string;
@@ -63,7 +64,11 @@
 	let createdAt = $state<string | null>(null);
 	let orderStatus = $state('open');
 	let orderNumber = $state<number | null>(null);
+	let orderCheckNumber = $state<number | null>(null);
 	const isClosed = $derived(orderStatus === 'closed');
+	const displayNumber = $derived(
+		isClosed ? (orderCheckNumber ?? orderNumber ?? orderId) : (orderNumber ?? orderId)
+	);
 
 	let categories = $state<Category[]>([]);
 	let menu = $state<MenuItem[]>([]);
@@ -257,6 +262,7 @@
 		hallColor = next.hall_color;
 		orderStatus = next.status;
 		orderNumber = next.number ?? null;
+		orderCheckNumber = next.check_number ?? null;
 		if (next.hall_id != null) hallId = next.hall_id;
 		if (next.qr_image_path !== undefined) hallQrPath = next.qr_image_path ?? null;
 		if (next.created_at) createdAt = next.created_at;
@@ -687,7 +693,7 @@
 		try {
 			const data = orderToReceiptData({
 				hallName,
-				orderId: orderNumber ?? orderId,
+				orderId: displayNumber,
 				isDraft,
 				isClosed,
 				createdAt,
@@ -698,7 +704,7 @@
 			});
 			const blob = await renderReceiptPng(data);
 			await shareReceipt(blob, {
-				orderId: orderNumber ?? orderId,
+				orderId: displayNumber,
 				hallName,
 				totalLabel: formatMoney(totalCents)
 			});
@@ -712,7 +718,7 @@
 </script>
 
 <svelte:head>
-	<title>{isDraft ? 'Новый заказ' : isClosed ? `Чек №${orderNumber ?? orderId}` : `Заказ №${orderNumber ?? orderId}`}</title>
+	<title>{isDraft ? 'Новый заказ' : isClosed ? `Чек №${displayNumber}` : `Заказ №${displayNumber}`}</title>
 </svelte:head>
 
 <div class="flex h-dvh flex-col bg-slate-50 print:hidden">
@@ -739,7 +745,7 @@
 		<div class="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3">
 			<div class="min-w-0 flex-1">
 				<p class="text-lg font-bold uppercase tracking-wide text-emerald-600">
-					{isClosed ? 'Чек' : 'Заказ'}{orderNumber != null ? ` №${orderNumber}` : ''}
+					{isClosed ? 'Чек' : 'Заказ'}{displayNumber != null ? ` №${displayNumber}` : ''}
 				</p>
 				<p class="truncate text-lg font-bold">
 					{itemCount} поз. — <span class="text-rose-600 text-xl">{formatMoney(totalCents)}</span>

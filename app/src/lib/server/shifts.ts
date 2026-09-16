@@ -34,6 +34,7 @@ export type OpenOrder = {
 export type ClosedCheck = {
 	id: number;
 	number: number;
+	check_number: number;
 	created_at: string;
 	closed_at: string | null;
 	waiter_name: string;
@@ -182,7 +183,7 @@ export function loadOrdersForShift(
 
 	const closedRows = db
 		.prepare(
-			`SELECT o.id, o.number, o.created_at, o.closed_at, u.name AS waiter_name, h.name AS hall_name,
+			`SELECT o.id, o.number, o.check_number, o.created_at, o.closed_at, u.name AS waiter_name, h.name AS hall_name,
 			        COALESCE((
 			          SELECT SUM(oi.quantity * oi.price_cents) FROM order_items oi WHERE oi.order_id = o.id
 			        ), 0) AS total_cents,
@@ -194,7 +195,7 @@ export function loadOrdersForShift(
 			 JOIN users u ON u.id = o.waiter_id
 			 JOIN halls h ON h.id = o.hall_id
 			 WHERE o.location_id = ? AND o.shift_id = ? AND o.status = 'closed'
-			 ORDER BY o.number ASC`
+			 ORDER BY o.check_number ASC`
 		)
 		.all(locationId, shiftId) as Array<Omit<ClosedCheck, 'items' | 'guests'>>;
 

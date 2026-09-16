@@ -25,6 +25,7 @@
 	type ClosedCheck = {
 		id: number;
 		number: number;
+		check_number: number;
 		created_at: string;
 		closed_at: string | null;
 		waiter_name: string;
@@ -455,7 +456,7 @@
 							ondblclick={() => (detailCheck = order)}
 						>
 							<div class="flex justify-between gap-2">
-								<span class="font-semibold">Чек №{order.number}</span>
+								<span class="font-semibold">Чек №{order.check_number}</span>
 								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
 							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
@@ -523,7 +524,7 @@
 							ondblclick={() => (detailCheck = order)}
 						>
 							<div class="flex justify-between gap-2">
-								<span class="font-semibold">Чек №{order.number}</span>
+								<span class="font-semibold">Чек №{order.check_number}</span>
 								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
 							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
@@ -849,7 +850,7 @@
 		<div class="w-full max-w-md rounded-md border border-slate-300 bg-slate-100 p-4">
 			<p class="font-semibold">Списание недоплаты</p>
 			<p class="mt-1 text-sm text-slate-700">
-				Чек №{writeoffTarget.number} ({writeoffTarget.waiter_name}) — недоплата{' '}
+				Чек №{writeoffTarget.check_number} ({writeoffTarget.waiter_name}) — недоплата{' '}
 				{formatMoney(writeoffTarget.shortfall_cents)}
 			</p>
 			<p class="mt-3 text-sm text-slate-500">Причина (обязательно)</p>
@@ -899,7 +900,7 @@
 		<div class="flex max-h-[90vh] w-full max-w-md flex-col rounded-md border border-slate-300 bg-slate-100">
 			<div class="flex items-start justify-between gap-2 border-b border-slate-200 p-4">
 				<div>
-					<p class="text-lg font-bold">Чек №{detailCheck.number}</p>
+					<p class="text-lg font-bold">Чек №{detailCheck.check_number}</p>
 					<p class="text-sm text-slate-500">{detailCheck.waiter_name} · {detailCheck.hall_name}</p>
 					<p class="text-xs text-slate-500">
 						Открыт: {datetimeLabel(detailCheck.created_at)}

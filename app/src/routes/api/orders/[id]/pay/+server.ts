@@ -6,6 +6,7 @@ import {
 	guestItemsTotal,
 	loadOrder,
 	settleEmptyUnpaidGuests,
+	assignCheckNumber,
 	waiterLocationId
 } from '$lib/server/orders';
 import type { RequestHandler } from './$types';
@@ -78,10 +79,10 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 			.get(orderId) as { n: number };
 		if (unpaid.n === 0) {
 			db.prepare(
-				`UPDATE orders SET status = 'closed', closed_at = datetime('now'),
+				`UPDATE orders SET status = 'closed', closed_at = datetime('now'), check_number = ?,
 				 total_amount_cents = COALESCE((SELECT SUM(quantity * price_cents) FROM order_items WHERE order_id = ?), 0)
 				 WHERE id = ?`
-			).run(orderId, orderId);
+			).run(assignCheckNumber(orderId), orderId, orderId);
 		}
 	})();
 

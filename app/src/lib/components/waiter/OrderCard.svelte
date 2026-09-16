@@ -8,6 +8,7 @@
 	export type WaiterOrder = {
 		id: number;
 		number: number;
+		check_number?: number;
 		status?: string;
 		total_amount_cents: number;
 		unpaid_cents?: number;
@@ -158,7 +159,9 @@
 	>
 		<div class="flex items-center justify-between gap-2">
 			<span class="flex min-w-0 items-center gap-2">
-				<span class="text-base font-bold">{closed ? 'Чек' : 'Заказ'} №{order.number}</span>
+				<span class="text-base font-bold">{closed ? 'Чек' : 'Заказ'} №{closed
+					? (order.check_number ?? order.number)
+					: order.number}</span>
 				{#if closed}
 					<span class="text-xs text-slate-500">{timeHm(order.closed_at)}</span>
 				{/if}
