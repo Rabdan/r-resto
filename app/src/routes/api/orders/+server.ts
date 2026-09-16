@@ -26,21 +26,11 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	);
 
 	if (tab === 'closed') {
-		const lastClosedStmt = db.prepare(
-			`SELECT id FROM shifts WHERE location_id = ? AND status = 'closed' ${
-				hallId ? 'AND hall_id = ?' : ''
-			} ORDER BY id DESC LIMIT 1`
-		);
 		const openShift = (hallId
 			? openShiftStmt.get(locationId, hallId)
 			: openShiftStmt.get(locationId)) as { id: number } | undefined;
-		const shift =
-			openShift ??
-			((hallId
-				? lastClosedStmt.get(locationId, hallId)
-				: lastClosedStmt.get(locationId)) as { id: number } | undefined);
 
-		if (!shift) return json({ orders: [], shiftOpen });
+		if (!openShift) return json({ orders: [], shiftOpen });
 
 		const rows = db
 			.prepare(
@@ -52,7 +42,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 				 WHERE o.location_id = ? AND o.status = 'closed' AND o.shift_id = ?
 				 ORDER BY o.check_number ASC`
 			)
-			.all(locationId, shift.id) as Array<{
+			.all(locationId, openShift.id) as Array<{
 			id: number;
 			number: number;
 			check_number: number;
