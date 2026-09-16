@@ -23,7 +23,7 @@
 	} = $props();
 
 	let mode = $state<'full' | 'partial'>('full');
-	let fullMethod = $state<'cashless' | 'cash'>('cashless');
+	let fullMethod = $state<'cashless' | 'cash' | 'none'>('none');
 	let cashlessIn = $state('');
 	let cashIn = $state('');
 	let activeField = $state<'cashless' | 'cash'>('cashless');
@@ -40,10 +40,10 @@
 	const collected = $derived(card + cashApplied);
 	const change = $derived(cashCents - cashApplied);
 	const shortfall = $derived(total - collected);
-	const fullCashChange = $derived(cashCents - total);
+	const fullCashChange = $derived(Math.max(0, cashCents - total));
 
 	const confirmEnabled = $derived(
-		mode === 'full' ? (fullMethod === 'cashless' ? total > 0 : cashCents >= total) : collected > 0
+		mode === 'full' ? (fullMethod === 'none' ? false : total > 0) : collected > 0
 	);
 
 	function imageUrl(path: string | null): string {
@@ -54,9 +54,10 @@
 		mode = mode === 'full' ? 'partial' : 'full';
 		cashlessIn = '';
 		cashIn = '';
+		fullMethod = 'none';
 	}
 
-	function setFullMethod(next: 'cashless' | 'cash') {
+	function setFullMethod(next: 'cashless' | 'cash' | 'none') {
 		fullMethod = next;
 		cashlessIn = '';
 		cashIn = '';
@@ -65,7 +66,9 @@
 	function confirm() {
 		if (mode === 'full') {
 			if (fullMethod === 'cashless') onConfirm({ cashlessCents: total, cashReceivedCents: 0 });
-			else onConfirm({ cashlessCents: 0, cashReceivedCents: cashCents });
+			else if (fullMethod === 'cash')
+				onConfirm({ cashlessCents: 0, cashReceivedCents: Math.max(cashCents, total) });
+			else return;
 		} else {
 			onConfirm({ cashlessCents: cashlessCents, cashReceivedCents: cashCents });
 		}
@@ -116,6 +119,15 @@
 					<button
 						type="button"
 						role="radio"
+						aria-checked={fullMethod === 'none'}
+						class="h-12 flex-1 rounded-md border text-base font-bold {fullMethod === 'none'
+							? 'border-slate-700 bg-slate-600 text-white'
+							: 'border-slate-300 bg-slate-50 text-slate-600'}"
+						onclick={() => setFullMethod('none')}>Нет</button
+					>
+					<button
+						type="button"
+						role="radio"
 						aria-checked={fullMethod === 'cash'}
 						class="h-12 flex-1 rounded-md border text-base font-bold {fullMethod === 'cash'
 							? 'border-emerald-800 bg-emerald-600 text-white'
@@ -128,7 +140,7 @@
 					{#if hallQrPath}
 						<img src={imageUrl(hallQrPath)} alt="QR для оплаты" class="mt-3 w-full object-contain" />
 					{/if}
-				{:else}
+				{:else if fullMethod === 'cash'}
 					<p class="mt-4 text-sm text-slate-500">Внесено, {currencySymbol()}</p>
 					<p class="font-mono text-2xl">{cashIn || '0'}</p>
 					<div class="mt-3">
