@@ -5,6 +5,7 @@ import type { RequestHandler } from './$types';
 
 type CardRow = {
 	order_id: number;
+	number: number;
 	created_at: string;
 	waiter_name: string;
 	hall_id: number;
@@ -34,7 +35,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 
 	const cards = db
 		.prepare(
-			`SELECT o.id AS order_id, o.created_at, u.name AS waiter_name,
+			`SELECT o.id AS order_id, o.number, o.created_at, u.name AS waiter_name,
 			        h.id AS hall_id, h.name AS hall_name, h.color_hex AS hall_color
 			 FROM orders o
 			 JOIN users u ON u.id = o.waiter_id

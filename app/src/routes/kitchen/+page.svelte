@@ -14,6 +14,7 @@
 	};
 	type KdsCard = {
 		order_id: number;
+		number: number;
 		created_at: string;
 		waiter_name: string;
 		hall_id: number;
@@ -160,7 +161,7 @@
 					{#each visibleCards as card (card.order_id)}
 						<li class="rounded-md border border-slate-200 bg-white p-4">
 							<div class="flex items-baseline justify-between gap-3">
-								<p class="text-lg font-bold text-slate-900">Заказ №{card.order_id}</p>
+								<p class="text-lg font-bold text-slate-900">Заказ №{card.number}</p>
 								<p class="text-sm font-semibold text-amber-700">{queueAge(card.created_at, now)}</p>
 							</div>
 							<p class="mt-1 text-sm text-slate-500">{card.hall_name} · {card.waiter_name}</p>
