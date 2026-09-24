@@ -11,7 +11,8 @@
 		hallQrPath,
 		error = null,
 		onClose,
-		onConfirm
+		onConfirm,
+		onCloseOrder
 	}: {
 		guests: PayGuest[];
 		payGuestId: number | null;
@@ -20,6 +21,7 @@
 		error?: string | null;
 		onClose: () => void;
 		onConfirm: (p: { cashlessCents: number; cashReceivedCents: number }) => void;
+		onCloseOrder?: () => void;
 	} = $props();
 
 	let mode = $state<'full' | 'partial'>('full');
@@ -27,6 +29,7 @@
 	let cashlessIn = $state('');
 	let cashIn = $state('');
 	let activeField = $state<'cashless' | 'cash'>('cashless');
+	let confirmOpen = $state(false);
 
 	const unpaid = $derived(guests.filter((g) => !g.is_paid));
 	const total = $derived(payGuestId != null ? guestTotal(payGuestId) : 0);
@@ -41,6 +44,8 @@
 	const change = $derived(cashCents - cashApplied);
 	const shortfall = $derived(total - collected);
 	const fullCashChange = $derived(Math.max(0, cashCents - total));
+
+	const payAmount = $derived(mode === 'full' ? total : collected);
 
 	const confirmEnabled = $derived(
 		mode === 'full' ? (fullMethod === 'none' ? false : total > 0) : collected > 0
@@ -64,14 +69,19 @@
 	}
 
 	function confirm() {
+		if (!confirmEnabled) return;
+		confirmOpen = true;
+	}
+
+	function applyPayment() {
+		confirmOpen = false;
 		if (mode === 'full') {
 			if (fullMethod === 'cashless') onConfirm({ cashlessCents: total, cashReceivedCents: 0 });
 			else if (fullMethod === 'cash')
 				onConfirm({ cashlessCents: 0, cashReceivedCents: Math.max(cashCents, total) });
-			else return;
-		} else {
-			onConfirm({ cashlessCents: cashlessCents, cashReceivedCents: cashCents });
+			return;
 		}
+		onConfirm({ cashlessCents: cashlessCents, cashReceivedCents: cashCents });
 	}
 </script>
 
@@ -216,5 +226,35 @@
 				onclick={confirm}>Оплата</button
 			>
 		</div>
+		{#if onCloseOrder}
+			<button
+				type="button"
+				class="h-12 w-full shrink-0 rounded-md border border-rose-300 bg-rose-50 text-base font-bold text-rose-700"
+				onclick={onCloseOrder}
+			>
+				Закрыть заказ
+			</button>
+		{/if}
 	</div>
 </div>
+
+{#if confirmOpen}
+	<div class="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-4 sm:items-center print:hidden">
+		<div class="w-full max-w-sm rounded-md border border-slate-300 bg-slate-100 p-4">
+			<p class="text-lg font-bold">Подтверждение оплаты</p>
+			<p class="mt-2 text-base text-slate-700">Поступила оплата {formatMoney(payAmount)}?</p>
+			<div class="mt-4 grid grid-cols-2 gap-2">
+				<button
+					type="button"
+					class="h-12 rounded-md border border-slate-300 bg-white text-base font-bold text-slate-800"
+					onclick={() => (confirmOpen = false)}>Нет</button
+				>
+				<button
+					type="button"
+					class="h-12 rounded-md border border-emerald-800 bg-emerald-600 text-base font-bold text-white"
+					onclick={applyPayment}>Да</button
+				>
+			</div>
+		</div>
+	</div>
+{/if}

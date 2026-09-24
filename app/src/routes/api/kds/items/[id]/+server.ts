@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { broadcast } from '$lib/server/sse';
+import { recomputeOrderReady } from '$lib/server/orders';
 import { deviceHasRole } from '$lib/types';
 import type { RequestHandler } from './$types';
 
@@ -21,13 +22,20 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 
 	const row = db
 		.prepare(
-			`SELECT i.id, i.status, i.order_id, o.status AS order_status, o.hall_id
+			`SELECT i.id, i.status, i.order_id, o.status AS order_status, o.hall_id, o.number
 			 FROM order_items i
 			 JOIN orders o ON o.id = i.order_id
 			 WHERE i.id = ? AND o.location_id = ?`
 		)
 		.get(itemId, locationId) as
-		| { id: number; status: string; order_id: number; order_status: string; hall_id: number }
+		| {
+				id: number;
+				status: string;
+				order_id: number;
+				order_status: string;
+				hall_id: number;
+				number: number;
+		  }
 		| undefined;
 	if (!row) return json({ error: 'not_found' }, { status: 404 });
 	if (row.order_status !== 'open') return json({ error: 'not_open' }, { status: 409 });
@@ -68,6 +76,18 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		ready_at: updated.ready_at,
 		locationId
 	});
+
+	const ready = recomputeOrderReady(row.order_id);
+	if (next === 'ready' && ready === 'ready') {
+		broadcast('ORDER_READY', {
+			orderId: row.order_id,
+			number: row.number,
+			hallId: row.hall_id,
+			locationId
+		});
+	} else if (next === 'pending') {
+		broadcast('ORDER_UPDATED', { orderId: row.order_id, locationId });
+	}
 
 	return json({ ok: true, itemId, status: updated.status, ready_at: updated.ready_at });
 };

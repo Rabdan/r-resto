@@ -44,6 +44,7 @@ export type ClosedCheck = {
 	cashless_cents: number;
 	shortfall_cents: number;
 	writeoff_cents: number;
+	unpaid_guests: number;
 	items: ShiftItem[];
 	guests: ShiftGuest[];
 };
@@ -57,6 +58,7 @@ export type CancelledOrder = {
 	waiter_name: string;
 	cancelled_by: string | null;
 	total_cents: number;
+	items: ShiftItem[];
 };
 
 export type ShiftRow = {
@@ -159,6 +161,11 @@ export function loadOrdersForShift(
 	const guestsStmt = db.prepare(
 		`SELECT name, is_paid FROM order_guests WHERE order_id = ? ORDER BY sort_order`
 	);
+	const unpaidGuestsStmt = db.prepare(
+		`SELECT COUNT(*) AS n FROM order_guests og
+		 WHERE og.order_id = ? AND og.is_paid = 0
+		   AND EXISTS (SELECT 1 FROM order_items oi WHERE oi.guest_id = og.id)`
+	);
 
 	const open = openRows.map((row) => ({
 		...row,
@@ -166,7 +173,7 @@ export function loadOrdersForShift(
 		guests: guestsStmt.all(row.id) as ShiftGuest[]
 	}));
 
-	const cancelled = db
+	const cancelledRows = db
 		.prepare(
 			`SELECT o.id, o.number, o.created_at, o.cancelled_at, o.cancel_reason, u.name AS waiter_name,
 			        a.name AS cancelled_by,
@@ -179,7 +186,12 @@ export function loadOrdersForShift(
 			 WHERE o.location_id = ? AND o.shift_id = ? AND o.status = 'cancelled'
 			 ORDER BY o.cancelled_at DESC`
 		)
-		.all(locationId, shiftId) as CancelledOrder[];
+		.all(locationId, shiftId) as Array<Omit<CancelledOrder, 'items'>>;
+
+	const cancelled = cancelledRows.map((row) => ({
+		...row,
+		items: itemsStmt.all(row.id) as ShiftItem[]
+	}));
 
 	const closedRows = db
 		.prepare(
@@ -202,7 +214,8 @@ export function loadOrdersForShift(
 	const closed_checks = closedRows.map((row) => ({
 		...row,
 		items: itemsStmt.all(row.id) as ShiftItem[],
-		guests: guestsStmt.all(row.id) as ShiftGuest[]
+		guests: guestsStmt.all(row.id) as ShiftGuest[],
+		unpaid_guests: (unpaidGuestsStmt.get(row.id) as { n: number }).n
 	}));
 
 	return { open, closed_checks, cancelled };

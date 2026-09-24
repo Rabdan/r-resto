@@ -6,7 +6,6 @@ import {
 	guestItemsTotal,
 	loadOrder,
 	settleEmptyUnpaidGuests,
-	assignCheckNumber,
 	waiterLocationId
 } from '$lib/server/orders';
 import type { RequestHandler } from './$types';
@@ -73,17 +72,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		).run(method, collected, cash, card, cashReceived, change, shortfall, guestId);
 
 		settleEmptyUnpaidGuests(orderId);
-
-		const unpaid = db
-			.prepare(`SELECT COUNT(*) AS n FROM order_guests WHERE order_id = ? AND is_paid = 0`)
-			.get(orderId) as { n: number };
-		if (unpaid.n === 0) {
-			db.prepare(
-				`UPDATE orders SET status = 'closed', closed_at = datetime('now'), check_number = ?,
-				 total_amount_cents = COALESCE((SELECT SUM(quantity * price_cents) FROM order_items WHERE order_id = ?), 0)
-				 WHERE id = ?`
-			).run(assignCheckNumber(orderId), orderId, orderId);
-		}
 	})();
 
 	if (alreadyPaid) return json({ error: 'already_paid' }, { status: 409 });
@@ -96,11 +84,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	if (!guestExists) return json({ error: 'guest_not_found' }, { status: 400 });
 
 	const order = loadOrder(orderId, locationId);
-	if (order?.status === 'closed') {
-		broadcast('ORDER_CLOSED', { orderId, locationId });
-	} else {
-		broadcast('ORDER_UPDATED', { orderId, locationId });
-	}
+	broadcast('ORDER_UPDATED', { orderId, locationId });
 
 	return json({ order, changeCents: change });
 };

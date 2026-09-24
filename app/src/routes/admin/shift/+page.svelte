@@ -35,6 +35,7 @@
 		cashless_cents: number;
 		shortfall_cents: number;
 		writeoff_cents: number;
+		unpaid_guests: number;
 		items: Item[];
 		guests: Guest[];
 	};
@@ -47,6 +48,7 @@
 		waiter_name: string;
 		cancelled_by: string | null;
 		total_cents: number;
+		items: Item[];
 	};
 	type Shift = {
 		id: number;
@@ -329,6 +331,28 @@
 	function methodLabel(method: 'cash' | 'cashless'): string {
 		return method === 'cash' ? 'Наличные' : 'Банк';
 	}
+
+	function paidStatus(c: ClosedCheck): 'paid' | 'partial' | 'unpaid' {
+		const collected = c.cash_cents + c.cashless_cents;
+		if (c.shortfall_cents > 0 || c.unpaid_guests > 0) {
+			return collected > 0 ? 'partial' : 'unpaid';
+		}
+		return 'paid';
+	}
+
+	function paidBadge(c: ClosedCheck): string {
+		const s = paidStatus(c);
+		if (s === 'paid') return '';
+		if (s === 'unpaid') return 'Не оплачен';
+		return 'Частично оплачен';
+	}
+
+	function paidBadgeClass(c: ClosedCheck): string {
+		const s = paidStatus(c);
+		if (s === 'unpaid') return 'bg-rose-600 text-white';
+		if (s === 'partial') return 'bg-amber-500 text-white';
+		return '';
+	}
 </script>
 
 <header class="bg-slate-50 px-4 py-3 font-semibold">Смена</header>
@@ -451,16 +475,21 @@
 			{:else if tab === 'closed'}
 				<ul class="space-y-2">
 					{#each openShift.closed_checks as order}
-						<li
-							class="touch-manipulation rounded-md border border-slate-200 bg-white p-3"
-							ondblclick={() => (detailCheck = order)}
-						>
-							<div class="flex justify-between gap-2">
-								<span class="font-semibold">Чек №{order.check_number}</span>
+						<li class="rounded-md border border-slate-200 bg-white p-3">
+							<div class="flex items-start justify-between gap-2">
+								<span class="font-semibold">
+									Чек №{order.check_number}
+									<span class="text-slate-400">(Заказ №{order.number})</span>
+								</span>
 								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
 							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
 							<p class="text-xs text-slate-500">Закрыт: {datetimeLabel(order.closed_at)}</p>
+							{#if paidBadge(order)}
+								<span class="mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-bold {paidBadgeClass(order)}">
+									{paidBadge(order)}
+								</span>
+							{/if}
 							{#if order.cashless_cents > 0}
 								<p class="mt-1 text-sm text-slate-700">Безнал: {formatMoney(order.cashless_cents)}</p>
 							{/if}
@@ -486,6 +515,13 @@
 									Списано: {formatMoney(order.writeoff_cents)}
 								</p>
 							{/if}
+							<button
+								type="button"
+								onclick={() => (detailCheck = order)}
+								class="mt-2 h-10 w-full rounded-md bg-slate-100 text-sm font-semibold text-slate-700"
+							>
+								Открыть
+							</button>
 						</li>
 					{:else}
 						<li class="text-slate-500">Нет закрытых чеков</li>
@@ -496,11 +532,18 @@
 					{#each openShift.cancelled as order}
 						<li class="rounded-md border border-slate-200 bg-slate-100 p-3 text-sm">
 							<div class="flex justify-between">
-								<span class="font-medium">№{order.number}</span>
+								<span class="font-medium">Заказ №{order.number}</span>
 								<span>{formatMoney(order.total_cents)}</span>
 							</div>
 							<p class="text-slate-500">{order.waiter_name} · {order.cancelled_by ?? 'админ'}</p>
 							<p class="text-rose-600">{order.cancel_reason}</p>
+							{#if order.items.length > 0}
+								<ul class="mt-2 space-y-0.5 text-slate-600">
+									{#each order.items as item}
+										<li>{item.quantity}× {item.title} — {formatMoney(item.price_cents * item.quantity)}</li>
+									{/each}
+								</ul>
+							{/if}
 						</li>
 					{:else}
 						<li class="text-slate-500">Пока нет отмен</li>
@@ -519,20 +562,38 @@
 						</li>
 					{/each}
 					{#each openShift.closed_checks as order}
-						<li
-							class="touch-manipulation rounded-md border border-slate-200 bg-white p-3"
-							ondblclick={() => (detailCheck = order)}
-						>
+						<li class="rounded-md border border-slate-200 bg-white p-3">
 							<div class="flex justify-between gap-2">
-								<span class="font-semibold">Чек №{order.check_number}</span>
+								<span class="font-semibold">
+									Чек №{order.check_number}
+									<span class="text-slate-400">(Заказ №{order.number})</span>
+								</span>
 								<span class="font-semibold">{formatMoney(order.total_cents)}</span>
 							</div>
 							<p class="text-sm text-slate-500">{order.waiter_name} · {order.hall_name}</p>
-							{#if order.shortfall_cents > 0}
-								<p class="text-xs font-semibold text-amber-600">недоплата {formatMoney(order.shortfall_cents)}</p>
+							{#if paidBadge(order)}
+								<span class="mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-bold {paidBadgeClass(order)}">
+									{paidBadge(order)}
+								</span>
 							{:else}
 								<p class="text-xs text-slate-500">закрыт</p>
 							{/if}
+							{#if order.cashless_cents > 0}
+								<p class="text-xs text-slate-600">Безнал: {formatMoney(order.cashless_cents)}</p>
+							{/if}
+							{#if order.cash_cents > 0}
+								<p class="text-xs text-slate-600">Наличные: {formatMoney(order.cash_cents)}</p>
+							{/if}
+							{#if order.shortfall_cents > 0}
+								<p class="text-xs font-semibold text-amber-600">недоплата {formatMoney(order.shortfall_cents)}</p>
+							{/if}
+							<button
+								type="button"
+								onclick={() => (detailCheck = order)}
+								class="mt-2 h-10 w-full rounded-md bg-slate-100 text-sm font-semibold text-slate-700"
+							>
+								Открыть
+							</button>
 						</li>
 					{/each}
 					{#each openShift.cancelled as order}
@@ -850,7 +911,7 @@
 		<div class="w-full max-w-md rounded-md border border-slate-300 bg-slate-100 p-4">
 			<p class="font-semibold">Списание недоплаты</p>
 			<p class="mt-1 text-sm text-slate-700">
-				Чек №{writeoffTarget.check_number} ({writeoffTarget.waiter_name}) — недоплата{' '}
+				Чек №{writeoffTarget.check_number} (Заказ №{writeoffTarget.number}) — недоплата{' '}
 				{formatMoney(writeoffTarget.shortfall_cents)}
 			</p>
 			<p class="mt-3 text-sm text-slate-500">Причина (обязательно)</p>
@@ -900,12 +961,20 @@
 		<div class="flex max-h-[90vh] w-full max-w-md flex-col rounded-md border border-slate-300 bg-slate-100">
 			<div class="flex items-start justify-between gap-2 border-b border-slate-200 p-4">
 				<div>
-					<p class="text-lg font-bold">Чек №{detailCheck.check_number}</p>
+					<p class="text-lg font-bold">
+						Чек №{detailCheck.check_number}
+						<span class="text-slate-400">(Заказ №{detailCheck.number})</span>
+					</p>
 					<p class="text-sm text-slate-500">{detailCheck.waiter_name} · {detailCheck.hall_name}</p>
 					<p class="text-xs text-slate-500">
 						Открыт: {datetimeLabel(detailCheck.created_at)}
 						{#if detailCheck.closed_at} · Закрыт: {datetimeLabel(detailCheck.closed_at)}{/if}
 					</p>
+					{#if paidBadge(detailCheck)}
+						<span class="mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-bold {paidBadgeClass(detailCheck)}">
+							{paidBadge(detailCheck)}
+						</span>
+					{/if}
 				</div>
 				<button
 					type="button"

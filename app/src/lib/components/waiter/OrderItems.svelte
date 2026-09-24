@@ -20,9 +20,9 @@
 		activeGuestId = null,
 		splitMode = false,
 		readOnly = false,
+		orderReadyAt = null,
 		onInc,
 		onDec,
-		onDelete,
 		onMove,
 		onRename,
 		onSelectGuest,
@@ -33,9 +33,9 @@
 		activeGuestId?: number | null;
 		splitMode?: boolean;
 		readOnly?: boolean;
+		orderReadyAt?: string | null;
 		onInc: (id: number) => void;
 		onDec: (id: number) => void;
-		onDelete: (id: number) => void;
 		onMove: (item: OrderLine, toGuestId: number) => void;
 		onRename: (id: number, name: string) => void;
 		onSelectGuest?: (id: number) => void;
@@ -72,15 +72,19 @@
 		}
 	});
 
+	const orderReady = $derived(waiterSeesReady('ready', orderReadyAt, now));
+
 	function statusLabel(item: OrderLine): string {
-		if (waiterSeesReady(item.status, item.ready_at, now)) return 'Готов';
+		if (orderReady && (item.status === 'ready' || item.status === 'pending')) return 'Готов';
 		if (item.status === 'ready' || item.status === 'pending') return 'На кухне';
 		if (item.status === 'out_of_stock') return 'Нет блюда';
 		return '';
 	}
 
 	function statusClass(item: OrderLine): string {
-		if (waiterSeesReady(item.status, item.ready_at, now)) return 'font-semibold text-emerald-600';
+		if (orderReady && (item.status === 'ready' || item.status === 'pending')) {
+			return 'font-semibold text-emerald-600';
+		}
 		if (item.status === 'out_of_stock') return 'font-semibold text-rose-600';
 		return 'text-slate-500';
 	}
@@ -93,6 +97,18 @@
 
 	function guestItemCount(id: number): number {
 		return items.filter((i) => i.guest_id === id).length;
+	}
+
+	function guestPaid(guestId: number): boolean {
+		return guests.find((g) => g.id === guestId)?.is_paid === 1;
+	}
+
+	function isEditable(item: OrderLine): boolean {
+		return (
+			!readOnly &&
+			!guestPaid(item.guest_id) &&
+			(item.status === 'held' || item.status === 'pending' || item.status === 'ready')
+		);
 	}
 
 	function canRemove(guest: OrderGuestChip): boolean {
@@ -271,11 +287,11 @@
 				<div class="min-w-0 flex-1">
 					<p class="truncate text-base font-semibold">{item.title}</p>
 					<p class="text-sm text-slate-500">
-						<span class="font-bold text-slate-700">{formatMoney(item.price_cents)}</span>
+						<span class="font-bold text-slate-700">{formatMoney(item.price_cents * item.quantity)}</span>
 						· <span class={statusClass(item)}>{statusLabel(item) || 'не отправлено'}</span>
 					</p>
 				</div>
-				{#if !readOnly && item.status === 'held'}
+				{#if isEditable(item)}
 					<button
 						type="button"
 						class="h-12 w-12 rounded-md border border-slate-300 bg-slate-200 text-xl font-bold"
@@ -286,11 +302,6 @@
 						type="button"
 						class="h-12 w-12 rounded-md border border-emerald-800 bg-emerald-600 text-xl font-bold text-white"
 						onclick={() => onInc(item.id)}>+</button
-					>
-					<button
-						type="button"
-						class="h-12 w-12 rounded-md border border-rose-300 bg-rose-100 text-lg font-bold text-rose-700"
-						onclick={() => onDelete(item.id)}>✕</button
 					>
 				{:else}
 					<span class="px-2 text-base font-bold">×{item.quantity}</span>

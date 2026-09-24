@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { broadcast } from '$lib/server/sse';
-import { loadOrder, settleEmptyUnpaidGuests, assignCheckNumber } from '$lib/server/orders';
+import { loadOrder, settleEmptyUnpaidGuests } from '$lib/server/orders';
 import { deviceHasRole } from '$lib/types';
 import type { RequestHandler } from './$types';
 
@@ -66,7 +66,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 	const rows = db
 		.prepare(
-			`SELECT o.id, o.number, o.status, o.total_amount_cents, o.created_at, o.hall_id,
+			`SELECT o.id, o.number, o.status, o.total_amount_cents, o.created_at, o.hall_id, o.ready_at,
 			        u.name AS waiter_name, h.name AS hall_name
 			 FROM orders o
 			 JOIN users u ON u.id = o.waiter_id
@@ -81,15 +81,13 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		total_amount_cents: number;
 		created_at: string;
 		hall_id: number;
+		ready_at: string | null;
 		waiter_name: string;
 		hall_name: string;
 	}>;
 
 	const guestsStmt = db.prepare(
 		`SELECT name FROM order_guests WHERE order_id = ? ORDER BY sort_order, id`
-	);
-	const readyStmt = db.prepare(
-		`SELECT ready_at FROM order_items WHERE order_id = ? AND status = 'ready'`
 	);
 	const unpaidStmt = db.prepare(
 		`SELECT COALESCE(SUM(oi.quantity * oi.price_cents), 0) AS n
@@ -106,7 +104,6 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	const orders = rows.map((row) => ({
 		...row,
 		guests: guestsStmt.all(row.id) as Array<{ name: string }>,
-		ready_at: (readyStmt.all(row.id) as Array<{ ready_at: string | null }>).map((r) => r.ready_at),
 		unpaid_cents: (unpaidStmt.get(row.id) as { n: number }).n,
 		preview: previewStmt.all(row.id) as Array<{ title: string; quantity: number }>,
 		out_of_stock_count: (oosStmt.get(row.id) as { n: number }).n
@@ -298,25 +295,19 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			);
 
 			settleEmptyUnpaidGuests(id);
-
-			const unpaid = db
-				.prepare(`SELECT COUNT(*) AS n FROM order_guests WHERE order_id = ? AND is_paid = 0`)
-				.get(id) as { n: number };
-			if (unpaid.n === 0) {
-				db.prepare(
-					`UPDATE orders SET status = 'closed', closed_at = datetime('now'), check_number = ? WHERE id = ?`
-				).run(assignCheckNumber(id), id);
-			}
 		}
 
-		return { id, changeCents };
+		return { id, number: next.n, changeCents };
 	})();
 
-	broadcast('ORDER_CREATED', { orderId: result.id, locationId });
+	broadcast('ORDER_CREATED', {
+		orderId: result.id,
+		number: result.number,
+		locationId,
+		hallId: hall.id,
+		waiterId
+	});
 	const order = loadOrder(result.id, locationId);
-	if (order?.status === 'closed') {
-		broadcast('ORDER_CLOSED', { orderId: result.id, locationId });
-	}
 
 	return json({ id: result.id, order, changeCents: result.changeCents }, { status: 201 });
 };

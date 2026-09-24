@@ -49,7 +49,10 @@ export const GET: RequestHandler = async ({ locals }) => {
 			     EXISTS (SELECT 1 FROM device_halls dh WHERE dh.device_id = ? AND dh.hall_id = o.hall_id)
 			     OR NOT EXISTS (SELECT 1 FROM device_halls dh2 WHERE dh2.device_id = ?)
 			   )
-			 ORDER BY o.created_at DESC, o.id DESC`
+			 ORDER BY
+			   CASE WHEN EXISTS (SELECT 1 FROM order_items ii WHERE ii.order_id = o.id AND ii.status = 'pending') THEN 0 ELSE 1 END,
+			   COALESCE((SELECT MAX(ii.sent_at) FROM order_items ii WHERE ii.order_id = o.id AND ii.status IN ('pending', 'ready')), o.created_at) ASC,
+			   o.created_at ASC, o.id ASC`
 		)
 		.all(locationId, deviceId, deviceId) as CardRow[];
 

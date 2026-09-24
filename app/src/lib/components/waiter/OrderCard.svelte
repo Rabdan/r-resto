@@ -18,7 +18,7 @@
 		waiter_name: string;
 		hall_name: string;
 		guests: GuestRef[];
-		ready_at?: Array<string | null>;
+		ready_at?: string | null;
 		preview?: Preview[];
 		out_of_stock_count?: number;
 	};
@@ -49,9 +49,7 @@
 	let lastTap = 0;
 	let longTimer: ReturnType<typeof setTimeout> | undefined;
 
-	const readyCount = $derived(
-		(order.ready_at ?? []).filter((at) => waiterSeesReady('ready', at, now)).length
-	);
+	const isReady = $derived(waiterSeesReady('ready', order.ready_at, now));
 	const oosCount = $derived(order.out_of_stock_count ?? 0);
 	const unpaid = $derived(order.unpaid_cents ?? order.total_amount_cents);
 
@@ -165,12 +163,12 @@
 				{#if closed}
 					<span class="text-xs text-slate-500">{timeHm(order.closed_at)}</span>
 				{/if}
-				{#if readyCount > 0}
+				{#if isReady}
 					<span
 						class="rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-bold text-white"
-						aria-label="Готово"
+						aria-label="Готов"
 					>
-						готово {readyCount}
+						Готов
 					</span>
 				{/if}
 				{#if oosCount > 0}

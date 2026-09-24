@@ -62,6 +62,39 @@ export function refreshOrderTotal(orderId: number): void {
 	).run(orderId, orderId);
 }
 
+/**
+ * Пересчитывает готовность заказа: если есть отправленные позиции и нет `pending`,
+ * ставит `orders.ready_at`; иначе сбрасывает в NULL. Возвращает итоговое состояние.
+ */
+export function recomputeOrderReady(orderId: number): 'ready' | 'not_ready' {
+	const row = db
+		.prepare(
+			`SELECT
+				(SELECT COUNT(*) FROM order_items WHERE order_id = ? AND status IN ('pending', 'ready')) AS sent,
+				(SELECT COUNT(*) FROM order_items WHERE order_id = ? AND status = 'pending') AS pending`
+		)
+		.get(orderId, orderId) as { sent: number; pending: number };
+	if (row.sent > 0 && row.pending === 0) {
+		db.prepare(`UPDATE orders SET ready_at = datetime('now') WHERE id = ?`).run(orderId);
+		return 'ready';
+	}
+	db.prepare(`UPDATE orders SET ready_at = NULL WHERE id = ?`).run(orderId);
+	return 'not_ready';
+}
+
+/** Принудительное закрытие заказа (назначает номер чека, ставит статус closed). */
+export function closeOrder(orderId: number, locationId: number): boolean {
+	const info = db
+		.prepare(
+			`UPDATE orders
+			 SET status = 'closed', closed_at = datetime('now'), check_number = ?,
+			     total_amount_cents = COALESCE((SELECT SUM(quantity * price_cents) FROM order_items WHERE order_id = ?), 0)
+			 WHERE id = ? AND location_id = ? AND status = 'open'`
+		)
+		.run(assignCheckNumber(orderId), orderId, orderId, locationId);
+	return info.changes > 0;
+}
+
 /** Следующий номер чека внутри смены заказа (нумерация чеков с 1). */
 export function assignCheckNumber(orderId: number): number {
 	const row = db
@@ -78,7 +111,7 @@ export function loadOrder(orderId: number, locationId: number) {
 	const order = db
 		.prepare(
 			`SELECT o.id, o.number, o.check_number, o.status, o.total_amount_cents, o.created_at, o.hall_id,
-			        h.name AS hall_name, h.color_hex AS hall_color, h.qr_image_path
+			        o.ready_at, h.name AS hall_name, h.color_hex AS hall_color, h.qr_image_path
 			 FROM orders o
 			 JOIN halls h ON h.id = o.hall_id
 			 WHERE o.id = ? AND o.location_id = ?`
@@ -92,6 +125,7 @@ export function loadOrder(orderId: number, locationId: number) {
 				total_amount_cents: number;
 				created_at: string;
 				hall_id: number;
+				ready_at: string | null;
 				hall_name: string;
 				hall_color: string;
 				qr_image_path: string | null;

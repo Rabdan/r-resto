@@ -3,6 +3,11 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { onPosEvent, posSession } from '$lib/client/pos-session.svelte';
+	import {
+		cancelOrderReadyToast,
+		scheduleOrderReadyToast
+	} from '$lib/client/notifications.svelte';
+	import { waiterSeesReady } from '$lib/item-ready';
 	import PinPad from '$lib/components/PinPad.svelte';
 	import MenuSheet from '$lib/components/waiter/MenuSheet.svelte';
 	import type { MenuSheetItem } from '$lib/components/waiter/MenuSheet.svelte';
@@ -38,6 +43,7 @@
 		hall_name: string;
 		hall_color: string;
 		qr_image_path?: string | null;
+		ready_at?: string | null;
 		guests: Guest[];
 		items: Item[];
 	};
@@ -90,6 +96,17 @@
 	let savePromptOpen = $state(false);
 	let savePromptTarget = $state('/waiter');
 	let printBusy = $state(false);
+	let orderReadyAt = $state<string | null>(null);
+	let nowTick = $state(Date.now());
+
+	$effect(() => {
+		const t = setInterval(() => {
+			nowTick = Date.now();
+		}, 1000);
+		return () => clearInterval(t);
+	});
+
+	const orderReady = $derived(waiterSeesReady('ready', orderReadyAt, nowTick));
 
 	let guestSeq = 0;
 	let itemSeq = 0;
@@ -104,6 +121,9 @@
 	const itemCount = $derived(items.reduce((n, i) => n + i.quantity, 0));
 	const totalCents = $derived(items.reduce((n, i) => n + i.quantity * i.price_cents, 0));
 	const heldCount = $derived(items.filter((i) => i.status === 'held').length);
+	const fullyPaid = $derived(
+		guests.every((g) => g.is_paid) && guests.reduce((n, g) => n + g.shortfall_cents, 0) === 0
+	);
 
 	function qtyInCheck(menuItemId: number): number {
 		return items
@@ -127,6 +147,7 @@
 		const offItem = onPosEvent('ITEM_STATUS_CHANGED', (ev) => {
 			try {
 				const data = JSON.parse(ev.data) as { orderId?: number };
+				if (data.orderId != null) cancelOrderReadyToast(data.orderId);
 				if (!isDraft && data.orderId === orderId) void reloadOrder();
 			} catch {
 				/* ignore */
@@ -141,7 +162,23 @@
 		const offUpdated = onPosEvent('ORDER_UPDATED', (ev) => {
 			try {
 				const data = JSON.parse(ev.data) as { orderId?: number };
+				if (data.orderId != null) cancelOrderReadyToast(data.orderId);
 				if (!isDraft && data.orderId === orderId) void reloadOrder();
+			} catch {
+				/* ignore */
+			}
+		});
+		const offOrderReady = onPosEvent('ORDER_READY', (ev) => {
+			try {
+				const data = JSON.parse(ev.data) as { orderId?: number; number?: number; hallId?: number };
+				if (data.orderId == null) return;
+				if (!isDraft && data.orderId === orderId) {
+					void reloadOrder();
+					return;
+				}
+				if (eventHallMatches(ev)) {
+					scheduleOrderReadyToast(data.orderId, data.number ?? data.orderId);
+				}
 			} catch {
 				/* ignore */
 			}
@@ -153,6 +190,7 @@
 			offShiftClosed();
 			offShiftOpened();
 			offUpdated();
+			offOrderReady();
 		};
 	});
 
@@ -263,6 +301,7 @@
 		orderStatus = next.status;
 		orderNumber = next.number ?? null;
 		orderCheckNumber = next.check_number ?? null;
+		orderReadyAt = next.ready_at ?? null;
 		if (next.hall_id != null) hallId = next.hall_id;
 		if (next.qr_image_path !== undefined) hallQrPath = next.qr_image_path ?? null;
 		if (next.created_at) createdAt = next.created_at;
@@ -352,12 +391,29 @@
 			}
 			return;
 		}
-		const res = await fetch(`/api/orders/${orderId}/items`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ guestId, menuItemId: item.id })
-		});
-		await applyRes(res);
+		const existing = items.find(
+			(i) =>
+				i.guest_id === guestId &&
+				i.menu_item_id === item.id &&
+				(i.status === 'held' || i.status === 'pending' || i.status === 'ready')
+		);
+		if (existing) {
+			await applyRes(
+				await fetch(`/api/orders/${orderId}/items/${existing.id}`, {
+					method: 'PATCH',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ action: 'inc' })
+				})
+			);
+		} else {
+			await applyRes(
+				await fetch(`/api/orders/${orderId}/items`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ guestId, menuItemId: item.id })
+				})
+			);
+		}
 	}
 
 	async function changeQty(itemId: number, action: 'inc' | 'dec') {
@@ -377,15 +433,6 @@
 				body: JSON.stringify({ action })
 			})
 		);
-	}
-
-	async function removeItem(itemId: number) {
-		if (isClosed) return;
-		if (isDraft) {
-			items = items.filter((i) => i.id !== itemId);
-			return;
-		}
-		await applyRes(await fetch(`/api/orders/${orderId}/items/${itemId}`, { method: 'DELETE' }));
 	}
 
 	async function addGuest() {
@@ -610,6 +657,20 @@
 		}
 	}
 
+	async function closeOrder() {
+		if (isClosed || isDraft || !shiftOpen) return;
+		if (!fullyPaid && !confirm('Заказ оплачен не полностью. Закрыть заказ?')) return;
+		const res = await fetch(`/api/orders/${orderId}/close`, { method: 'POST' });
+		const data = await res.json().catch(() => ({}));
+		if (!res.ok) {
+			error = orderErrorMessage(data.error, 'Не удалось закрыть заказ');
+			return;
+		}
+		if (data.order) applyOrder(data.order);
+		payOpen = false;
+		await goto('/waiter');
+	}
+
 	async function commitDraft(opts: {
 		fired: boolean;
 		pay?: { guestIndex: number; cashlessCents: number; cashReceivedCents: number };
@@ -774,6 +835,11 @@
 			{/if}
 		</div>
 
+		{#if orderReady && !isClosed}
+			<div class="shrink-0 border-b border-emerald-200 bg-emerald-50 px-4 py-2">
+				<p class="text-base font-bold text-emerald-700">Заказ готов</p>
+			</div>
+		{/if}
 		{#if error}
 			<p class="px-4 pt-3 text-sm text-rose-600">{error}</p>
 		{/if}
@@ -795,9 +861,9 @@
 						activeGuestId={guestId}
 						{splitMode}
 						readOnly={isClosed}
+						orderReadyAt={isClosed ? null : orderReadyAt}
 						onInc={(id) => changeQty(id, 'inc')}
 						onDec={(id) => changeQty(id, 'dec')}
-						onDelete={removeItem}
 						onMove={requestMove}
 						onRename={renameGuest}
 						onSelectGuest={selectGuest}
@@ -938,6 +1004,7 @@
 			payError = null;
 		}}
 		onConfirm={(p) => void pay(p)}
+		onCloseOrder={isDraft ? undefined : () => void closeOrder()}
 	/>
 {/if}
 

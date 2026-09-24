@@ -2,6 +2,7 @@
 	import { getContext, onMount } from 'svelte';
 	import PosShell from '$lib/components/PosShell.svelte';
 	import { POS_SESSION_KEY, onPosEvent, type PosSessionState } from '$lib/client/pos-session.svelte';
+	import { notify } from '$lib/client/notifications.svelte';
 
 	type KdsItem = {
 		id: number;
@@ -35,6 +36,8 @@
 	let lastTapAt = 0;
 	let queueGen = 0;
 	let togglingId = $state<number | null>(null);
+	let knownIds = new Set<number>();
+	let queueInitialized = false;
 
 	const selectedHall = $derived(halls.find((h) => h.id === hallId) ?? null);
 	const visibleCards = $derived(hallId == null ? cards : cards.filter((c) => c.hall_id === hallId));
@@ -86,7 +89,21 @@
 		const res = await fetch('/api/kds');
 		if (!res.ok || gen !== queueGen) return;
 		const data = (await res.json()) as { cards?: KdsCard[] };
-		cards = data.cards ?? [];
+		const next = data.cards ?? [];
+		if (!queueInitialized) {
+			queueInitialized = true;
+		} else {
+			for (const card of next) {
+				if (!knownIds.has(card.order_id)) {
+					notify(`Новый заказ №${card.number}`, {
+						body: `${card.hall_name} · ${card.waiter_name}`,
+						kind: 'info'
+					});
+				}
+			}
+		}
+		knownIds = new Set(next.map((c) => c.order_id));
+		cards = next;
 	}
 
 	function imageUrl(path: string | null): string {

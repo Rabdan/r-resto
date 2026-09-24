@@ -3,6 +3,7 @@ services:
     build:
       context: ./app
       dockerfile: Dockerfile
+      network: host
     # наружу не торчит — доступ только через caddy
     volumes:
       - ./data:/data

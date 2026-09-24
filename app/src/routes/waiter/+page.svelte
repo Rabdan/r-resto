@@ -4,6 +4,11 @@
 	import PosShell from '$lib/components/PosShell.svelte';
 	import OrderCard, { type WaiterOrder } from '$lib/components/waiter/OrderCard.svelte';
 	import { POS_SESSION_KEY, onPosEvent, type PosSessionState } from '$lib/client/pos-session.svelte';
+	import {
+		cancelOrderReadyToast,
+		notify,
+		scheduleOrderReadyToast
+	} from '$lib/client/notifications.svelte';
 
 	type Hall = { id: number; name: string; color_hex: string; sort_order: number };
 
@@ -39,9 +44,57 @@
 				reload();
 			}),
 			onPosEvent('ORDER_CLOSED', reload),
-			onPosEvent('ORDER_CREATED', reload),
-			onPosEvent('ORDER_UPDATED', reload),
-			onPosEvent('ITEM_STATUS_CHANGED', reload),
+			onPosEvent('ORDER_CREATED', (ev) => {
+				try {
+					const data = JSON.parse(ev.data) as {
+						orderId?: number;
+						number?: number;
+						waiterId?: number;
+						hallId?: number;
+					};
+					if (hallId == null || data.hallId == null || data.hallId === hallId) {
+						if (data.waiterId != null && data.waiterId !== device?.userId) {
+							notify(`Новый заказ №${data.number ?? data.orderId}`, { kind: 'info' });
+						}
+					}
+				} catch {
+					/* ignore */
+				}
+				reload();
+			}),
+			onPosEvent('ORDER_UPDATED', (ev) => {
+				try {
+					const data = JSON.parse(ev.data) as { orderId?: number };
+					if (data.orderId != null) cancelOrderReadyToast(data.orderId);
+				} catch {
+					/* ignore */
+				}
+				reload();
+			}),
+			onPosEvent('ITEM_STATUS_CHANGED', (ev) => {
+				try {
+					const data = JSON.parse(ev.data) as { orderId?: number };
+					if (data.orderId != null) cancelOrderReadyToast(data.orderId);
+				} catch {
+					/* ignore */
+				}
+				reload();
+			}),
+			onPosEvent('ORDER_READY', (ev) => {
+				try {
+					const data = JSON.parse(ev.data) as {
+						orderId?: number;
+						number?: number;
+						hallId?: number;
+					};
+					if (eventHallMatches(ev) && data.orderId != null) {
+						scheduleOrderReadyToast(data.orderId, data.number ?? data.orderId);
+					}
+				} catch {
+					/* ignore */
+				}
+				reload();
+			}),
 		onPosEvent('SHIFT_OPENED', (ev) => {
 			if (eventHallMatches(ev)) reload();
 		}),

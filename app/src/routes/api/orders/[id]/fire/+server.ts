@@ -21,6 +21,7 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 		`UPDATE order_items SET status = 'pending', sent_at = datetime('now'), ready_at = NULL
 		 WHERE order_id = ? AND status = 'held'`
 	).run(orderId);
+	db.prepare(`UPDATE orders SET ready_at = NULL WHERE id = ?`).run(orderId);
 
 	notifyOrder(orderId, locationId);
 	return json({ order: loadOrder(orderId, locationId) });

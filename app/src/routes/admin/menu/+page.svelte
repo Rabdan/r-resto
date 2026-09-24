@@ -77,7 +77,9 @@
 	let dragItem = $state<Item | null>(null);
 	let dragOverCat = $state<number | null>(null);
 	let dragMoved = false;
+	let dragArmed = false;
 	let dragStart = { x: 0, y: 0 };
+	let longTimer: ReturnType<typeof setTimeout> | undefined;
 
 	onMount(() => {
 		void load();
@@ -233,7 +235,7 @@
 		itemModal.imagePath = data.image_path;
 	}
 
-	// --- drag & drop between categories ---
+	// --- drag & drop between categories (handle + long-press) ---
 	function dropCategoryUnder(e: PointerEvent): number | null {
 		const el = document.elementFromPoint(e.clientX, e.clientY);
 		const host = el?.closest('[data-cat-drop]') as HTMLElement | null;
@@ -242,36 +244,53 @@
 		return Number.isFinite(id) ? id : null;
 	}
 
-	function itemPointerDown(e: PointerEvent, item: Item) {
-		if ((e.target as HTMLElement).closest('button')) return;
+	function clearLong() {
+		if (longTimer !== undefined) {
+			clearTimeout(longTimer);
+			longTimer = undefined;
+		}
+	}
+
+	function handlePointerDown(e: PointerEvent, item: Item) {
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 		dragItem = item;
 		dragMoved = false;
+		dragArmed = false;
 		dragStart = { x: e.clientX, y: e.clientY };
 		dragOverCat = item.category_id;
+		clearLong();
+		longTimer = setTimeout(() => {
+			dragArmed = true;
+		}, 300);
 	}
 
-	function itemPointerMove(e: PointerEvent) {
+	function handlePointerMove(e: PointerEvent) {
 		if (!dragItem) return;
-		if (!dragMoved && Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y) > 8) {
-			dragMoved = true;
+		const dist = Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y);
+		if (!dragArmed) {
+			if (dist > 8) {
+				clearLong();
+				dragItem = null;
+				dragOverCat = null;
+			}
+			return;
 		}
+		if (dist > 8) dragMoved = true;
 		const target = dropCategoryUnder(e);
 		if (target != null) dragOverCat = target;
 	}
 
-	function itemPointerUp(e: PointerEvent) {
+	function handlePointerUp(e: PointerEvent) {
+		clearLong();
 		const item = dragItem;
 		const moved = dragMoved;
 		const target = dropCategoryUnder(e);
 		dragItem = null;
 		dragOverCat = null;
 		dragMoved = false;
-		if (!item) return;
-		if (moved && target != null && target !== item.category_id) {
+		dragArmed = false;
+		if (item && moved && target != null && target !== item.category_id) {
 			void moveItem(item, target);
-		} else if (!moved) {
-			openEditItem(item);
 		}
 	}
 
@@ -429,14 +448,16 @@
 							<div
 								role="button"
 								tabindex="0"
-								class="flex min-h-14 cursor-grab touch-none items-center gap-3 px-3 py-2 active:cursor-grabbing {dragItem?.id ===
-								item.id
+								class="flex min-h-14 items-center gap-3 px-3 py-2 {dragItem?.id === item.id
 									? 'opacity-40'
 									: ''}"
-								onpointerdown={(e) => itemPointerDown(e, item)}
-								onpointermove={itemPointerMove}
-								onpointerup={itemPointerUp}
-								onpointercancel={itemPointerUp}
+								onclick={() => openEditItem(item)}
+								onkeydown={(e) => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault();
+										openEditItem(item);
+									}
+								}}
 							>
 								{#if item.image_path}
 									<img
@@ -465,7 +486,10 @@
 								<div class="flex shrink-0 flex-col">
 									<button
 										type="button"
-										onclick={() => moveItemDirection(item, 'up')}
+										onclick={(e) => {
+											e.stopPropagation();
+											moveItemDirection(item, 'up');
+										}}
 										aria-label="Вверх"
 										class="flex h-5 w-8 items-center justify-center text-slate-400 hover:text-slate-700"
 									>
@@ -473,7 +497,10 @@
 									</button>
 									<button
 										type="button"
-										onclick={() => moveItemDirection(item, 'down')}
+										onclick={(e) => {
+											e.stopPropagation();
+											moveItemDirection(item, 'down');
+										}}
 										aria-label="Вниз"
 										class="flex h-5 w-8 items-center justify-center text-slate-400 hover:text-slate-700"
 									>
@@ -482,7 +509,10 @@
 								</div>
 								<button
 									type="button"
-									onclick={() => deleteItem(item)}
+									onclick={(e) => {
+										e.stopPropagation();
+										deleteItem(item);
+									}}
 									class="flex h-10 w-10 shrink-0 items-center justify-center rounded text-slate-400 hover:text-rose-600"
 									aria-label="Удалить товар"
 								>
@@ -490,7 +520,18 @@
 										<path d="M3 6h18M8 6V4h8v2m-9 0v14a2 2 0 002 2h6a2 2 0 002-2V6" />
 									</svg>
 								</button>
-								<span class="text-slate-300">⠿</span>
+								<button
+									type="button"
+									class="flex h-10 w-10 shrink-0 touch-none cursor-grab items-center justify-center text-slate-400 active:cursor-grabbing"
+									aria-label="Перенести в другую категорию"
+									onpointerdown={(e) => handlePointerDown(e, item)}
+									onpointermove={handlePointerMove}
+									onpointerup={handlePointerUp}
+									onpointercancel={handlePointerUp}
+									onclick={(e) => e.stopPropagation()}
+								>
+									⠿
+								</button>
 							</div>
 						</li>
 					{:else}
