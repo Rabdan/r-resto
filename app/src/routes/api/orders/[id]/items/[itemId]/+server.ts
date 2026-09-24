@@ -69,7 +69,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 			if (current.status === 'pending' || current.status === 'ready') {
 				db.prepare(
 					`UPDATE order_items
-					 SET quantity = quantity + 1, status = 'pending', sent_at = datetime('now'), ready_at = NULL
+					 SET quantity = quantity + 1, status = 'held', sent_at = NULL, ready_at = NULL
 					 WHERE id = ?`
 				).run(itemId);
 			} else {
@@ -78,6 +78,12 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		} else if (body.action === 'dec') {
 			if (current.quantity <= 1) {
 				db.prepare(`DELETE FROM order_items WHERE id = ?`).run(itemId);
+			} else if (current.status === 'pending' || current.status === 'ready') {
+				db.prepare(
+					`UPDATE order_items
+					 SET quantity = quantity - 1, status = 'held', sent_at = NULL, ready_at = NULL
+					 WHERE id = ?`
+				).run(itemId);
 			} else {
 				db.prepare(`UPDATE order_items SET quantity = quantity - 1 WHERE id = ?`).run(itemId);
 			}
