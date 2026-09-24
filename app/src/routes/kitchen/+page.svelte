@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { getContext, onMount } from 'svelte';
 	import PosShell from '$lib/components/PosShell.svelte';
-	import { POS_SESSION_KEY, onPosEvent, type PosSessionState } from '$lib/client/pos-session.svelte';
+	import {
+		POS_SESSION_KEY,
+		onPosConnect,
+		onPosEvent,
+		type PosSessionState
+	} from '$lib/client/pos-session.svelte';
 	import { notify } from '$lib/client/notifications.svelte';
 
 	type KdsItem = {
@@ -36,8 +41,6 @@
 	let lastTapAt = 0;
 	let queueGen = 0;
 	let togglingId = $state<number | null>(null);
-	let knownIds = new Set<number>();
-	let queueInitialized = false;
 
 	const selectedHall = $derived(halls.find((h) => h.id === hallId) ?? null);
 	const visibleCards = $derived(hallId == null ? cards : cards.filter((c) => c.hall_id === hallId));
@@ -51,7 +54,24 @@
 			onPosEvent('ORDER_UPDATED', reload),
 			onPosEvent('ORDER_CANCELLED', reload),
 			onPosEvent('ORDER_CLOSED', reload),
-			onPosEvent('ITEM_STATUS_CHANGED', reload)
+			onPosEvent('ITEM_STATUS_CHANGED', reload),
+			onPosEvent('ORDER_FIRED', (ev) => {
+				try {
+					const data = JSON.parse(ev.data) as {
+						orderId?: number;
+						number?: number;
+						hallId?: number;
+						locationId?: number;
+					};
+					if (data.locationId != null && data.locationId !== device?.locationId) return;
+					if (hallId != null && data.hallId != null && data.hallId !== hallId) return;
+					notify(`Новый заказ №${data.number ?? data.orderId}`, { kind: 'info' });
+				} catch {
+					/* ignore */
+				}
+				reload();
+			}),
+			onPosConnect(reload)
 		];
 		const tick = setInterval(() => {
 			now = Date.now();
@@ -89,21 +109,7 @@
 		const res = await fetch('/api/kds');
 		if (!res.ok || gen !== queueGen) return;
 		const data = (await res.json()) as { cards?: KdsCard[] };
-		const next = data.cards ?? [];
-		if (!queueInitialized) {
-			queueInitialized = true;
-		} else {
-			for (const card of next) {
-				if (!knownIds.has(card.order_id)) {
-					notify(`Новый заказ №${card.number}`, {
-						body: `${card.hall_name} · ${card.waiter_name}`,
-						kind: 'info'
-					});
-				}
-			}
-		}
-		knownIds = new Set(next.map((c) => c.order_id));
-		cards = next;
+		cards = data.cards ?? [];
 	}
 
 	function imageUrl(path: string | null): string {

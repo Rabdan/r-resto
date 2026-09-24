@@ -115,6 +115,7 @@ erDiagram
 | `ORDER_CANCELLED` / `ORDER_CLOSED` | админ / оплата | официант, кухня |
 | `ITEM_STATUS_CHANGED` | кухня | официант |
 | `ORDER_READY` | кухня (весь заказ готов) | официант |
+| `ORDER_FIRED` | официант («На кухню» / дозаказ) | кухня (нотификация + перезагрузка очереди) |
 | `SHIFT_OPENED` / `SHIFT_CLOSED` | админ | все терминалы точки |
 
 Клиент: один `EventSource` на POS-сессию (`lib/client/pos-session.svelte.ts`) с reconnect/backoff. Страницы подписываются на события, не открывают свой канал. Конструктор официанта на `MENU_UPDATED` перезапрашивает `GET /api/menu`. Не кэшировать SSE и `/api/*` в SW.

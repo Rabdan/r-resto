@@ -307,6 +307,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		hallId: hall.id,
 		waiterId
 	});
+	if (fired) {
+		broadcast('ORDER_FIRED', {
+			orderId: result.id,
+			number: result.number,
+			hallId: hall.id,
+			locationId
+		});
+	}
 	const order = loadOrder(result.id, locationId);
 
 	return json({ id: result.id, order, changeCents: result.changeCents }, { status: 201 });

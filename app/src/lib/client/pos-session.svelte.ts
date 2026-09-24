@@ -14,6 +14,7 @@ export type PosSseEventName =
 	| 'ORDER_CANCELLED'
 	| 'ORDER_CLOSED'
 	| 'ORDER_READY'
+	| 'ORDER_FIRED'
 	| 'ITEM_STATUS_CHANGED'
 	| 'SHIFT_OPENED'
 	| 'SHIFT_CLOSED';
@@ -35,6 +36,7 @@ const SSE_EVENTS: PosSseEventName[] = [
 	'ORDER_CANCELLED',
 	'ORDER_CLOSED',
 	'ORDER_READY',
+	'ORDER_FIRED',
 	'ITEM_STATUS_CHANGED',
 	'SHIFT_OPENED',
 	'SHIFT_CLOSED'
@@ -47,6 +49,7 @@ export const posSession: PosSessionState = $state({
 });
 
 const listeners = new Map<PosSseEventName, Set<PosSseHandler>>();
+const connectListeners = new Set<() => void>();
 
 let source: EventSource | undefined;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -117,6 +120,14 @@ export function onPosEvent(event: PosSseEventName, handler: PosSseHandler): () =
 	};
 }
 
+/** Вызывается при каждом (пере)подключении SSE — для перезагрузки данных после разрыва. */
+export function onPosConnect(handler: () => void): () => void {
+	connectListeners.add(handler);
+	return () => {
+		connectListeners.delete(handler);
+	};
+}
+
 function dispatch(event: PosSseEventName, ev: MessageEvent): void {
 	const set = listeners.get(event);
 	if (!set) return;
@@ -138,6 +149,7 @@ function connectEvents(): void {
 	source = es;
 	es.onopen = () => {
 		backoffMs = 1000;
+		for (const handler of [...connectListeners]) handler();
 	};
 	for (const name of SSE_EVENTS) {
 		es.addEventListener(name, (ev) => {

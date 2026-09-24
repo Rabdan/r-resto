@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
+import { broadcast } from '$lib/server/sse';
 import { getOpenOrder, loadOrder, notifyOrder, waiterLocationId } from '$lib/server/orders';
 import type { RequestHandler } from './$types';
 
@@ -24,5 +25,11 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 	db.prepare(`UPDATE orders SET ready_at = NULL WHERE id = ?`).run(orderId);
 
 	notifyOrder(orderId, locationId);
+	broadcast('ORDER_FIRED', {
+		orderId,
+		number: order.number,
+		hallId: order.hall_id,
+		locationId
+	});
 	return json({ order: loadOrder(orderId, locationId) });
 };

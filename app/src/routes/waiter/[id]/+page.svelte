@@ -5,6 +5,7 @@
 	import { onPosEvent, posSession } from '$lib/client/pos-session.svelte';
 	import {
 		cancelOrderReadyToast,
+		notify,
 		scheduleOrderReadyToast
 	} from '$lib/client/notifications.svelte';
 	import { waiterSeesReady } from '$lib/item-ready';
@@ -135,8 +136,11 @@
 		void boot();
 		const offCancelled = onPosEvent('ORDER_CANCELLED', (ev) => {
 			try {
-				const data = JSON.parse(ev.data) as { orderId?: number };
-				if (data.orderId === orderId) void goto('/waiter');
+				const data = JSON.parse(ev.data) as { orderId?: number; number?: number };
+				if (data.orderId === orderId) {
+					notify(`Заказ №${data.number ?? data.orderId} отменён админом`, { kind: 'warn' });
+					void goto('/waiter');
+				}
 			} catch {
 				/* ignore */
 			}

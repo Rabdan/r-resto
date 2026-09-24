@@ -16,6 +16,7 @@ export type SseEventName =
 	| 'ORDER_CANCELLED'
 	| 'ORDER_CLOSED'
 	| 'ORDER_READY'
+	| 'ORDER_FIRED'
 	| 'ITEM_STATUS_CHANGED'
 	| 'SHIFT_OPENED'
 	| 'SHIFT_CLOSED';

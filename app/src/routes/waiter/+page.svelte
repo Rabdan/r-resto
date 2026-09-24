@@ -37,9 +37,9 @@
 				try {
 					const data = JSON.parse(ev.data) as { orderId?: number; number?: number };
 					const n = data.number ?? data.orderId;
-					message = n ? `Заказ №${n} отменён админом` : 'Заказ отменён админом';
+					notify(`Заказ №${n} отменён админом`, { kind: 'warn' });
 				} catch {
-					message = 'Заказ отменён админом';
+					notify('Заказ отменён админом', { kind: 'warn' });
 				}
 				reload();
 			}),

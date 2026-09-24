@@ -63,18 +63,19 @@ export function refreshOrderTotal(orderId: number): void {
 }
 
 /**
- * Пересчитывает готовность заказа: если есть отправленные позиции и нет `pending`,
- * ставит `orders.ready_at`; иначе сбрасывает в NULL. Возвращает итоговое состояние.
+ * Пересчитывает готовность заказа: готов, если есть отправленные позиции,
+ * нет `pending` и нет `held` (недосланных правок). Иначе сбрасывает `ready_at`.
  */
 export function recomputeOrderReady(orderId: number): 'ready' | 'not_ready' {
 	const row = db
 		.prepare(
 			`SELECT
 				(SELECT COUNT(*) FROM order_items WHERE order_id = ? AND status IN ('pending', 'ready')) AS sent,
-				(SELECT COUNT(*) FROM order_items WHERE order_id = ? AND status = 'pending') AS pending`
+				(SELECT COUNT(*) FROM order_items WHERE order_id = ? AND status = 'pending') AS pending,
+				(SELECT COUNT(*) FROM order_items WHERE order_id = ? AND status = 'held') AS held`
 		)
-		.get(orderId, orderId) as { sent: number; pending: number };
-	if (row.sent > 0 && row.pending === 0) {
+		.get(orderId, orderId, orderId) as { sent: number; pending: number; held: number };
+	if (row.held === 0 && row.sent > 0 && row.pending === 0) {
 		db.prepare(`UPDATE orders SET ready_at = datetime('now') WHERE id = ?`).run(orderId);
 		return 'ready';
 	}
