@@ -35,13 +35,13 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 
 	db.transaction(() => {
 		const guest = db
-			.prepare(`SELECT id, is_paid FROM order_guests WHERE id = ? AND order_id = ?`)
-			.get(guestId, orderId) as { id: number; is_paid: number } | undefined;
+			.prepare(
+				`SELECT id, is_paid, cash_cents, cashless_cents FROM order_guests WHERE id = ? AND order_id = ?`
+			)
+			.get(guestId, orderId) as
+			| { id: number; is_paid: number; cash_cents: number; cashless_cents: number }
+			| undefined;
 		if (!guest) return;
-		if (guest.is_paid) {
-			alreadyPaid = true;
-			return;
-		}
 
 		const total = guestItemsTotal(orderId, guestId);
 		if (total <= 0) {
@@ -49,8 +49,15 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 			return;
 		}
 
-		const card = Math.min(Math.max(cashless, 0), total);
-		const remaining = total - card;
+		const alreadyCollected = guest.cash_cents + guest.cashless_cents;
+		const due = total - alreadyCollected;
+		if (due <= 0) {
+			alreadyPaid = true;
+			return;
+		}
+
+		const card = Math.min(Math.max(cashless, 0), due);
+		const remaining = due - card;
 		const cash = Math.min(Math.max(cashReceived, 0), remaining);
 		const collected = card + cash;
 		if (collected <= 0) {
@@ -59,17 +66,30 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		}
 
 		change = cashReceived - cash;
-		const shortfall = total - collected;
+		const newCash = guest.cash_cents + cash;
+		const newCashless = guest.cashless_cents + card;
+		const shortfall = total - newCash - newCashless;
+		const isPaid = shortfall <= 0 ? 1 : 0;
 		const method = card > 0 && cash > 0 ? 'mixed' : card > 0 ? 'cashless' : 'cash';
 
 		db.prepare(
 			`UPDATE order_guests
-			 SET is_paid = 1, payment_method = ?, amount_cents = ?,
+			 SET is_paid = ?, payment_method = ?, amount_cents = ?,
 			     cash_cents = ?, cashless_cents = ?,
 			     cash_received_cents = ?, change_cents = ?,
 			     shortfall_cents = ?, paid_at = datetime('now')
-			 WHERE id = ? AND is_paid = 0`
-		).run(method, collected, cash, card, cashReceived, change, shortfall, guestId);
+			 WHERE id = ?`
+		).run(
+			isPaid,
+			method,
+			newCash + newCashless,
+			newCash,
+			newCashless,
+			cashReceived,
+			change,
+			shortfall,
+			guestId
+		);
 
 		settleEmptyUnpaidGuests(orderId);
 	})();

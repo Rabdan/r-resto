@@ -12,6 +12,11 @@
 		status?: string;
 		total_amount_cents: number;
 		unpaid_cents?: number;
+		paid_cents?: number;
+		cash_cents?: number;
+		cashless_cents?: number;
+		shortfall_cents?: number;
+		writeoff_cents?: number;
 		created_at: string;
 		closed_at?: string | null;
 		hall_id: number;
@@ -51,7 +56,6 @@
 
 	const isReady = $derived(waiterSeesReady('ready', order.ready_at, now));
 	const oosCount = $derived(order.out_of_stock_count ?? 0);
-	const unpaid = $derived(order.unpaid_cents ?? order.total_amount_cents);
 
 	function timeHm(dbTime: string | null | undefined): string {
 		return formatDbTimeHm(dbTime);
@@ -67,13 +71,30 @@
 	}
 
 	function paymentLabel(method: string | null | undefined): string {
-		return method === 'cash' ? 'Наличные' : method === 'cashless' ? 'Безнал' : '—';
+		return method === 'cash'
+			? 'Наличные'
+			: method === 'cashless'
+				? 'Безнал'
+				: method === 'mixed'
+					? 'Нал+Безнал'
+					: '—';
 	}
 
 	function paymentSummary(guests: GuestRef[]): string {
 		if (guests.length === 0) return '—';
 		if (guests.length === 1) return paymentLabel(guests[0].payment_method);
 		return guests.map((g) => `${g.name} — ${paymentLabel(g.payment_method)}`).join(' · ');
+	}
+
+	function closedPaymentStatus(): { label: string; cls: string } {
+		const collected = (order.cash_cents ?? 0) + (order.cashless_cents ?? 0);
+		const shortfall = order.shortfall_cents ?? 0;
+		if (shortfall > 0) {
+			return collected > 0
+				? { label: 'Частично оплачен', cls: 'bg-amber-500 text-white' }
+				: { label: 'Не оплачен', cls: 'bg-rose-600 text-white' };
+		}
+		return { label: 'Оплачен', cls: 'bg-emerald-600 text-white' };
 	}
 
 	function clearLong() {
@@ -178,7 +199,7 @@
 				{/if}
 			</span>
 			<span class="text-2xl font-extrabold {closed ? 'text-slate-900' : 'text-emerald-700'}"
-				>{formatMoney(closed ? order.total_amount_cents : unpaid)}</span
+				>{formatMoney(order.total_amount_cents)}</span
 			>
 		</div>
 		<p class="mt-1 text-sm text-slate-500">
@@ -188,6 +209,14 @@
 				{timeHm(order.created_at)} · {ageLabel()} · {order.waiter_name} · {order.hall_name}
 			{/if}
 		</p>
+		{#if !closed && order.paid_cents}
+			{@const remaining = order.total_amount_cents - order.paid_cents}
+			{#if remaining > 0}
+				<p class="mt-1 text-sm font-semibold text-amber-600">неоплачено: {formatMoney(remaining)}</p>
+			{:else}
+				<p class="mt-1 text-sm font-semibold text-emerald-600">оплачено</p>
+			{/if}
+		{/if}
 		<p class="mt-1 text-sm text-slate-700">
 			Гости: {order.guests.map((g) => g.name).join(', ') || '—'}
 		</p>
@@ -197,7 +226,25 @@
 			</p>
 		{/if}
 		{#if closed}
-			<p class="mt-1 text-sm font-semibold text-slate-700">Оплата: {paymentSummary(order.guests)}</p>
+			{@const status = closedPaymentStatus()}
+			<div class="mt-2 flex flex-wrap items-center gap-2">
+				<span class="rounded-full px-2 py-0.5 text-xs font-bold {status.cls}">{status.label}</span>
+				<span class="text-xs font-semibold text-slate-500">
+					{paymentSummary(order.guests)}
+				</span>
+			</div>
+			{#if order.cashless_cents}
+				<p class="mt-1 text-sm text-slate-700">Безнал: {formatMoney(order.cashless_cents)}</p>
+			{/if}
+			{#if order.cash_cents}
+				<p class="mt-1 text-sm text-slate-700">Наличные: {formatMoney(order.cash_cents)}</p>
+			{/if}
+			{#if order.shortfall_cents}
+				<p class="mt-1 text-sm font-semibold text-amber-600">Недоплата: {formatMoney(order.shortfall_cents)}</p>
+			{/if}
+			{#if order.writeoff_cents}
+				<p class="mt-1 text-sm text-slate-500">Списано: {formatMoney(order.writeoff_cents)}</p>
+			{/if}
 		{/if}
 	</div>
 

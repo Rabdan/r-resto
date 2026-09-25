@@ -143,7 +143,7 @@
 			pickedId = null;
 			return;
 		}
-		if (!guest.is_paid) onSelectGuest?.(guest.id);
+		onSelectGuest?.(guest.id);
 	}
 
 	function onPointerDown(e: PointerEvent, item: OrderLine) {
@@ -233,17 +233,17 @@
 			{:else}
 				<button
 					type="button"
-					class="min-w-0 flex-1 text-left text-lg font-bold {guest.is_paid
-						? 'text-slate-400'
-						: activeGuestId === guest.id
-							? 'text-emerald-800'
+					class="min-w-0 flex-1 text-left text-lg font-bold {activeGuestId === guest.id
+						? 'text-emerald-800'
+						: guest.is_paid
+							? 'text-slate-400'
 							: 'text-emerald-700'}"
 					onclick={() => onGuestTap(guest)}
 				>
 					Гость: {guest.name}{#if guest.is_paid}<span class="ml-2 text-sm font-semibold">оплачен</span
 						>{/if}{#if guest.shortfall_cents > 0}<span
 							class="ml-2 text-sm font-semibold text-amber-600">недоплата {formatMoney(guest.shortfall_cents)}</span
-						>{/if}{#if !guest.is_paid && activeGuestId === guest.id}<span
+						>{/if}{#if activeGuestId === guest.id}<span
 							class="ml-2 text-xs font-semibold uppercase tracking-wide text-emerald-600">активен</span
 						>{/if}
 				</button>

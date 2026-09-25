@@ -342,7 +342,7 @@
 
 	function paidBadge(c: ClosedCheck): string {
 		const s = paidStatus(c);
-		if (s === 'paid') return '';
+		if (s === 'paid') return 'Оплачен';
 		if (s === 'unpaid') return 'Не оплачен';
 		return 'Частично оплачен';
 	}
@@ -351,7 +351,7 @@
 		const s = paidStatus(c);
 		if (s === 'unpaid') return 'bg-rose-600 text-white';
 		if (s === 'partial') return 'bg-amber-500 text-white';
-		return '';
+		return 'bg-emerald-600 text-white';
 	}
 </script>
 

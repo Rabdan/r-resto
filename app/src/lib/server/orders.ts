@@ -180,6 +180,25 @@ export function settleEmptyUnpaidGuests(orderId: number): void {
 	}
 }
 
+/**
+ * Пересчитывает недоплату и статус оплаты гостей после изменения состава заказа:
+ * оплативший гость, чья сумма выросла, снова становится неоплаченным (`is_paid = 0`,
+ * `shortfall_cents` = разница). Гостей без оплаты не трогаем.
+ */
+export function recomputeGuestPayments(orderId: number): void {
+	const guests = db
+		.prepare(`SELECT id, cash_cents, cashless_cents FROM order_guests WHERE order_id = ?`)
+		.all(orderId) as Array<{ id: number; cash_cents: number; cashless_cents: number }>;
+	const update = db.prepare(`UPDATE order_guests SET shortfall_cents = ?, is_paid = ? WHERE id = ?`);
+	for (const g of guests) {
+		const paid = g.cash_cents + g.cashless_cents;
+		if (paid <= 0) continue;
+		const total = guestItemsTotal(orderId, g.id);
+		const shortfall = Math.max(0, total - paid);
+		update.run(shortfall, shortfall === 0 ? 1 : 0, g.id);
+	}
+}
+
 export function mergeOrInsertHeld(opts: {
 	orderId: number;
 	guestId: number;

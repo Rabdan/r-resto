@@ -5,6 +5,7 @@ import {
 	getOpenOrder,
 	loadOrder,
 	notifyOrder,
+	recomputeGuestPayments,
 	recomputeOrderReady,
 	refreshOrderTotal,
 	waiterLocationId
@@ -21,13 +22,6 @@ function getEditableItem(orderId: number, itemId: number): EditableItem | undefi
 			 WHERE i.id = ? AND i.order_id = ? AND i.status IN ('held', 'pending', 'ready')`
 		)
 		.get(itemId, orderId) as EditableItem | undefined;
-}
-
-function guestIsPaid(orderId: number, guestId: number): boolean {
-	const g = db
-		.prepare(`SELECT is_paid FROM order_guests WHERE id = ? AND order_id = ?`)
-		.get(guestId, orderId) as { is_paid: number } | undefined;
-	return g?.is_paid === 1;
 }
 
 function notifyOrderChanged(orderId: number, locationId: number): void {
@@ -59,12 +53,10 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	const body = (await request.json().catch(() => ({}))) as { action?: 'inc' | 'dec' };
 	const item = getEditableItem(orderId, itemId);
 	if (!item) return json({ error: 'not_found' }, { status: 404 });
-	if (guestIsPaid(orderId, item.guest_id)) return json({ error: 'guest_paid' }, { status: 409 });
 
 	db.transaction(() => {
 		const current = getEditableItem(orderId, itemId);
 		if (!current) return;
-		if (guestIsPaid(orderId, current.guest_id)) return;
 		if (body.action === 'inc') {
 			if (current.status === 'pending' || current.status === 'ready') {
 				db.prepare(
@@ -89,6 +81,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 			}
 		}
 		refreshOrderTotal(orderId);
+		recomputeGuestPayments(orderId);
 	})();
 
 	notifyOrderChanged(orderId, locationId);
@@ -107,11 +100,11 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 
 	const item = getEditableItem(orderId, itemId);
 	if (!item) return json({ error: 'not_found' }, { status: 404 });
-	if (guestIsPaid(orderId, item.guest_id)) return json({ error: 'guest_paid' }, { status: 409 });
 
 	db.transaction(() => {
 		db.prepare(`DELETE FROM order_items WHERE id = ?`).run(itemId);
 		refreshOrderTotal(orderId);
+		recomputeGuestPayments(orderId);
 	})();
 
 	notifyOrderChanged(orderId, locationId);

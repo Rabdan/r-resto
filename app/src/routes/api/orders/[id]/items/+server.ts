@@ -5,6 +5,7 @@ import {
 	loadOrder,
 	mergeOrInsertHeld,
 	notifyOrder,
+	recomputeGuestPayments,
 	refreshOrderTotal,
 	waiterLocationId
 } from '$lib/server/orders';
@@ -28,10 +29,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	};
 
 	const guest = db
-		.prepare(`SELECT id, is_paid FROM order_guests WHERE id = ? AND order_id = ?`)
-		.get(Number(body.guestId), orderId) as { id: number; is_paid: number } | undefined;
+		.prepare(`SELECT id FROM order_guests WHERE id = ? AND order_id = ?`)
+		.get(Number(body.guestId), orderId) as { id: number } | undefined;
 	if (!guest) return json({ error: 'guest_not_found' }, { status: 400 });
-	if (guest.is_paid) return json({ error: 'guest_paid' }, { status: 409 });
 
 	const qty = Math.max(1, Math.floor(Number(body.quantity) || 1));
 
@@ -58,6 +58,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 				isCustom: false
 			});
 			refreshOrderTotal(orderId);
+			recomputeGuestPayments(orderId);
 		})();
 	} else {
 		const title = (body.title ?? '').trim();
@@ -76,6 +77,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 				isCustom: true
 			});
 			refreshOrderTotal(orderId);
+			recomputeGuestPayments(orderId);
 		})();
 	}
 

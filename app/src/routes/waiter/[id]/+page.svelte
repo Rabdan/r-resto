@@ -123,7 +123,7 @@
 	const totalCents = $derived(items.reduce((n, i) => n + i.quantity * i.price_cents, 0));
 	const heldCount = $derived(items.filter((i) => i.status === 'held').length);
 	const fullyPaid = $derived(
-		guests.every((g) => g.is_paid) && guests.reduce((n, g) => n + g.shortfall_cents, 0) === 0
+		guests.every((g) => guestTotal(g.id) === g.cash_cents + g.cashless_cents)
 	);
 
 	function qtyInCheck(menuItemId: number): number {
@@ -344,6 +344,8 @@
 				return 'Нельзя удалить последнего гостя';
 			case 'guest_has_items':
 				return 'Сначала перенеси или удали позиции';
+			case 'no_excess':
+				return 'Нет суммы для возврата';
 			default:
 				return fallback;
 		}
@@ -361,17 +363,12 @@
 
 	function selectGuest(id: number) {
 		const guest = guests.find((g) => g.id === id);
-		if (!guest || guest.is_paid) return;
+		if (!guest) return;
 		guestId = id;
 	}
 
 	async function addMenuItem(item: MenuItem) {
 		if (!item.is_available || !guestId) return;
-		const current = guests.find((g) => g.id === guestId);
-		if (current?.is_paid) {
-			error = 'Гость уже оплачен';
-			return;
-		}
 		error = null;
 		if (isDraft) {
 			const existing = items.find(
@@ -500,11 +497,6 @@
 
 	async function addCustom() {
 		if (!guestId || isClosed) return;
-		const current = guests.find((g) => g.id === guestId);
-		if (current?.is_paid) {
-			error = 'Гость уже оплачен';
-			return;
-		}
 		const price = parseMoney(customPrice);
 		if (!customTitle.trim() || !Number.isFinite(price) || price < 0) return;
 		const title = customTitle.trim();
@@ -675,6 +667,22 @@
 		await goto('/waiter');
 	}
 
+	async function refundGuest(guestId: number) {
+		if (isClosed || isDraft || !shiftOpen) return;
+		const res = await fetch(`/api/orders/${orderId}/refund`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ guestId })
+		});
+		const ok = await applyRes(res);
+		if (ok) {
+			payOpen = false;
+			payError = null;
+		} else {
+			payError = error;
+		}
+	}
+
 	async function commitDraft(opts: {
 		fired: boolean;
 		pay?: { guestIndex: number; cashlessCents: number; cashReceivedCents: number };
@@ -741,8 +749,8 @@
 			error = 'Смена закрыта';
 			return;
 		}
-		const unpaid = guests.filter((g) => !g.is_paid && guestTotal(g.id) > 0);
-		payGuestId = unpaid[0]?.id ?? null;
+		const owing = guests.filter((g) => guestTotal(g.id) !== g.cash_cents + g.cashless_cents);
+		payGuestId = owing[0]?.id ?? null;
 		payError = null;
 		payOpen = true;
 	}
@@ -921,14 +929,25 @@
 							>
 								На кухню
 							</button>
-							<button
-								type="button"
-								onclick={openPay}
-								disabled={!shiftOpen}
-								class="h-12 rounded-md border border-emerald-800 bg-emerald-600 text-base font-bold text-white disabled:opacity-50"
-							>
-								Оплата
-							</button>
+							{#if fullyPaid}
+								<button
+									type="button"
+									onclick={() => void closeOrder()}
+									disabled={!shiftOpen}
+									class="h-12 rounded-md border border-emerald-800 bg-emerald-600 text-base font-bold text-white disabled:opacity-50"
+								>
+									Закрыть
+								</button>
+							{:else}
+								<button
+									type="button"
+									onclick={openPay}
+									disabled={!shiftOpen}
+									class="h-12 rounded-md border border-emerald-800 bg-emerald-600 text-base font-bold text-white disabled:opacity-50"
+								>
+									Оплата
+								</button>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -998,7 +1017,12 @@
 
 {#if payOpen}
 	<PayDialog
-		{guests}
+		guests={guests.map((g) => ({
+			id: g.id,
+			name: g.name,
+			is_paid: g.is_paid,
+			paid_cents: g.cash_cents + g.cashless_cents
+		}))}
 		bind:payGuestId
 		{guestTotal}
 		{hallQrPath}
@@ -1008,6 +1032,7 @@
 			payError = null;
 		}}
 		onConfirm={(p) => void pay(p)}
+		onRefund={(gid) => void refundGuest(gid)}
 		onCloseOrder={isDraft ? undefined : () => void closeOrder()}
 	/>
 {/if}

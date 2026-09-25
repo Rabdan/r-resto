@@ -131,7 +131,7 @@ erDiagram
 - `POST /api/admin/logout`
 - `GET /api/admin/me`
 - `POST /api/admin/devices/bind` — код + waiter/kitchen
-- `GET|POST /api/orders`, `POST /api/orders/:id/items`, split, pay, fire, `POST /api/orders/:id/close`
+- `GET|POST /api/orders`, `POST /api/orders/:id/items`, split, pay, fire, `POST /api/orders/:id/close`, `POST /api/orders/:id/refund`
 - `GET /api/kds` — очередь кухни (открытые заказы с pending/ready, новые сверху, позиции без цен)
 - `PATCH /api/kds/items/:id` — `{ status: 'ready' | 'pending' }`
 - `GET|POST /api/menu`, upload картинки

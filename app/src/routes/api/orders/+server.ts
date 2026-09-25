@@ -57,9 +57,22 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		const guestsStmt = db.prepare(
 			`SELECT name, payment_method FROM order_guests WHERE order_id = ? ORDER BY sort_order, id`
 		);
+		const payStmt = db.prepare(
+			`SELECT COALESCE(SUM(cash_cents), 0) AS cash_cents,
+			        COALESCE(SUM(cashless_cents), 0) AS cashless_cents,
+			        COALESCE(SUM(shortfall_cents), 0) AS shortfall_cents,
+			        COALESCE(SUM(writeoff_cents), 0) AS writeoff_cents
+			 FROM order_guests WHERE order_id = ?`
+		);
 		const orders = rows.map((row) => ({
 			...row,
-			guests: guestsStmt.all(row.id) as Array<{ name: string; payment_method: string | null }>
+			guests: guestsStmt.all(row.id) as Array<{ name: string; payment_method: string | null }>,
+			...(payStmt.get(row.id) as {
+				cash_cents: number;
+				cashless_cents: number;
+				shortfall_cents: number;
+				writeoff_cents: number;
+			})
 		}));
 		return json({ orders, shiftOpen });
 	}
@@ -95,6 +108,10 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		 JOIN order_guests og ON og.id = oi.guest_id
 		 WHERE oi.order_id = ? AND og.is_paid = 0`
 	);
+	const paidStmt = db.prepare(
+		`SELECT COALESCE(SUM(cash_cents + cashless_cents), 0) AS n
+		 FROM order_guests WHERE order_id = ?`
+	);
 	const previewStmt = db.prepare(
 		`SELECT title, quantity FROM order_items WHERE order_id = ? ORDER BY id LIMIT 2`
 	);
@@ -105,6 +122,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		...row,
 		guests: guestsStmt.all(row.id) as Array<{ name: string }>,
 		unpaid_cents: (unpaidStmt.get(row.id) as { n: number }).n,
+		paid_cents: (paidStmt.get(row.id) as { n: number }).n,
 		preview: previewStmt.all(row.id) as Array<{ title: string; quantity: number }>,
 		out_of_stock_count: (oosStmt.get(row.id) as { n: number }).n
 	}));
@@ -276,14 +294,16 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 		if (payMethod) {
 			const payGuestId = guestIds[Math.min(payGuestIndex, guestIds.length - 1)];
+			const isPaid = payShortfallCents > 0 ? 0 : 1;
 			db.prepare(
 				`UPDATE order_guests
-				 SET is_paid = 1, payment_method = ?, amount_cents = ?,
+				 SET is_paid = ?, payment_method = ?, amount_cents = ?,
 				     cash_cents = ?, cashless_cents = ?,
 				     cash_received_cents = ?, change_cents = ?,
 				     shortfall_cents = ?, paid_at = datetime('now')
 				 WHERE id = ?`
 			).run(
+				isPaid,
 				payMethod,
 				payCashCents + payCashlessCents,
 				payCashCents,
