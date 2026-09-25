@@ -50,7 +50,7 @@
 					}}
 				>
 					{#if allowAllHalls}
-						<option value="" class="text-slate-900">Все</option>
+						<option value="" class="text-slate-900">Tất cả</option>
 					{/if}
 					{#each halls as hall}
 						<option value={hall.id} class="text-slate-900">{hall.name}</option>

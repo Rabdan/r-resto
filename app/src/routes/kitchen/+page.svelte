@@ -65,7 +65,7 @@
 					};
 					if (data.locationId != null && data.locationId !== device?.locationId) return;
 					if (hallId != null && data.hallId != null && data.hallId !== hallId) return;
-					notify(`Новый заказ №${data.number ?? data.orderId}`, { kind: 'info' });
+					notify(`Đơn mới số ${data.number ?? data.orderId}`, { kind: 'info' });
 				} catch {
 					/* ignore */
 				}
@@ -121,10 +121,10 @@
 		if (!m) return '';
 		const created = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0)));
 		const mins = Math.max(0, Math.floor((nowMs - created.getTime()) / 60000));
-		if (mins < 1) return 'только что';
-		if (mins < 60) return `${mins} мин`;
+		if (mins < 1) return 'vừa xong';
+		if (mins < 60) return `${mins} phút`;
 		const hours = Math.floor(mins / 60);
-		return `${hours} ч ${mins % 60} мин`;
+		return `${hours} giờ ${mins % 60} phút`;
 	}
 
 	function onItemPointerUp(item: KdsItem) {
@@ -164,7 +164,7 @@
 </script>
 
 <PosShell
-	title="Привет, {device?.userName ?? '…'} · Кухня"
+	title="Xin chào, {device?.userName ?? '…'} · Bếp"
 	hallColor={selectedHall?.color_hex ?? '#065F46'}
 	halls={halls.map((h) => ({ id: h.id, name: h.name }))}
 	{hallId}
@@ -174,17 +174,17 @@
 >
 	<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 		<div class="shrink-0 bg-slate-50 px-4 pt-4 pb-3">
-			<p class="text-sm text-slate-500">В очереди: {visibleCards.length}</p>
+			<p class="text-sm text-slate-500">Đang chờ: {visibleCards.length}</p>
 		</div>
 		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
 			{#if visibleCards.length === 0}
-				<p class="mt-10 text-center text-slate-500">Нет заявок. Карточки появятся после «На кухню».</p>
+				<p class="mt-10 text-center text-slate-500">Không có đơn. Thẻ xuất hiện sau khi «Gửi vào bếp».</p>
 			{:else}
 				<ul class="space-y-3">
 					{#each visibleCards as card (card.order_id)}
 						<li class="rounded-md border border-slate-200 bg-white p-4">
 							<div class="flex items-baseline justify-between gap-3">
-								<p class="text-lg font-bold text-slate-900">Заказ №{card.number}</p>
+								<p class="text-lg font-bold text-slate-900">Đơn số {card.number}</p>
 								<p class="text-sm font-semibold text-amber-700">{queueAge(card.created_at, now)}</p>
 							</div>
 							<p class="mt-1 text-sm text-slate-500">{card.hall_name} · {card.waiter_name}</p>
@@ -211,7 +211,7 @@
 												<span class="min-w-0 flex-1">
 													<span class="block truncate">{item.title}</span>
 													{#if item.description}
-														<span class="block truncate text-xs font-normal text-slate-500">{item.description}</span>
+														<span class="block truncate text-slate-500">{item.description}</span>
 													{/if}
 												</span>
 											</span>
